@@ -7,7 +7,12 @@ mod error;
 
 pub use error::{Error, Result};
 
-use std::{env, fmt, io::Write, str::FromStr};
+use std::{
+    env, fmt,
+    io::{self, Write},
+    process,
+    str::FromStr,
+};
 
 pub enum HelpType {
     None,
@@ -82,19 +87,38 @@ impl<'a> Command<'a> {
         T::from_str(self.data.clone().unwrap().as_str())
     }
 
-    /// Recursively searches for given name and adds all tried into vector for future "did you mean .." results
-    fn search_subcmd<'b>(&mut self, name: &'b str, so_far: &mut Vec<&'b str>) -> Result<&mut Self> {
-        if self.name == name {
-            Ok(self)
-        } else {
-            so_far.push(name);
-            for subcmd in self.subcmds.iter_mut() {
-                match subcmd.search_subcmd(name, so_far) {
-                    Ok(found) => return Ok(found),
-                    Err(_) => (),
-                }
+    pub fn launch(&mut self) -> Result<()> {
+        let mut buf = io::stdout();
+        let mut args = env::args();
+        args.next();
+        self.launch_custom(&mut buf, args)
+    }
+
+    /// Launches parsing with custom io buffer and argument source
+    pub fn launch_custom(
+        &mut self,
+        buf: &mut impl Write,
+        mut args: impl Iterator<Item = String>,
+    ) -> Result<()> {
+        const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
+        let arg = match args.next() {
+            Some(string) => string,
+            None => {
+                self.help(buf, vec![])?;
+                process::exit(1)
             }
-            Err(Error::CommandNotFound(name.to_string()))
+        };
+        let arg_str = arg.as_str();
+
+        if HELP_POSSIBLES.contains(&arg_str) {
+            self.help(buf, vec![])?;
+            process::exit(0)
+        } else if arg.starts_with("--") {
+            todo!("long argument")
+        } else if arg.starts_with("-") {
+            todo!("short argument")
+        } else {
+            todo!("subcommand")
         }
     }
 
