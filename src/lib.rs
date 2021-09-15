@@ -79,7 +79,10 @@ pub struct Command<'a> {
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
+    /// Raw data found from parsing, if found
     data: Option<String>,
+    /// User-implemented closure which is ran at parse-time, if found
+    run: Option<Box<dyn FnMut(Vec<&Argument<'a>>, &str)>>, // TODO: use
 }
 
 impl<'a> Command<'a> {
@@ -251,6 +254,7 @@ mod tests {
             args: vec![],
             subcmds: vec![],
             data: None,
+            run: None,
         };
         assert_eq!(cmd.help_left(), "mine [number]".to_string());
     }
@@ -288,6 +292,7 @@ mod tests {
             ],
             subcmds: vec![],
             data: None,
+            run: None,
         };
         let mut buf = vec![];
 
@@ -299,6 +304,8 @@ mod tests {
 
         assert_eq!(res, "\n  This is a simple command\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
+
+    // TODO: launch testing
 }
 
-// cli!("hello" => {help: "woah", parses: String, below: ["-a|--append": {parses: PathBuf}, "-b|-c": {}]}, "-zeta": {help: "just an awesome argument"})
+// cli!("hello" => {help: "woah", parses: String, below: ["-a|--append": {run: |data| set_ext = data]}, "-zeta": {help: "just an awesome argument"})
