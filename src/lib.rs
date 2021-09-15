@@ -66,7 +66,6 @@ impl<'a> fmt::Display for Help<'a> {
 
 trait CommonInternal<'a> {
     fn help_left(&self) -> String;
-    fn help_full(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()>;
 }
 
 pub struct Command<'a> {
@@ -82,16 +81,27 @@ impl<'a> Command<'a> {
     pub fn parse<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
         T::from_str(self.data.clone().unwrap().as_str())
     }
-}
 
-impl<'a> CommonInternal<'a> for Command<'a> {
-    fn help_left(&self) -> String {
-        let mut output = self.name.to_string();
-        output.push_str(&self.help_type.to_string());
-        output
+    /// Recursively searches for given name and adds all tried into vector for future "did you mean .." results
+    fn search_subcmd<'b>(&mut self, name: &'b str, so_far: &mut Vec<&'b str>) -> Result<&mut Self> {
+        if self.name == name {
+            Ok(self)
+        } else {
+            so_far.push(name);
+            for subcmd in self.subcmds.iter_mut() {
+                match subcmd.search_subcmd(name, so_far) {
+                    Ok(found) => return Ok(found),
+                    Err(_) => (),
+                }
+            }
+            Err(Error::CommandNotFound(name.to_string()))
+        }
     }
 
-    fn help_full(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()> {
+    /// Writes full help message to buffer
+    fn help(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()> {
+        // TODO: multi-line arguments
+        // TODO: truncate message if too long
         let exe_path = env::current_exe().map_err(|_| Error::InvalidCurExe)?;
         let exe = exe_path
             .file_name()
@@ -103,11 +113,28 @@ impl<'a> CommonInternal<'a> for Command<'a> {
         if level.len() != 0 {
             buf.write_fmt(format_args!("{} ", level.join(" ")))?;
         }
-
         buf.write_fmt(format_args!(
-            "{}{} [OPTIONS]\n\n  {}",
+            "{}{} [options]\n\n  {}",
             self.name, self.help_type, self.help
         ))?;
+
+        /// Automatically pads left and right hand side of help messages together
+        fn tab_to<'a>(buf: &mut impl Write, lr: Vec<(String, &Help<'a>)>) -> Result<()> {
+            let mut max = 0;
+            for (l, _) in lr.iter() {
+                let l_len = l.len();
+                if l_len > max {
+                    max = l_len
+                }
+            }
+
+            for (l, r) in lr {
+                let padding = " ".repeat(max - l.len());
+                buf.write_fmt(format_args!("  {}{}   {}\n", l, padding, r))?;
+            }
+
+            Ok(())
+        }
 
         let mut any = false;
 
@@ -141,6 +168,14 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     }
 }
 
+impl<'a> CommonInternal<'a> for Command<'a> {
+    fn help_left(&self) -> String {
+        let mut output = self.name.to_string();
+        output.push_str(&self.help_type.to_string());
+        output
+    }
+}
+
 pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
@@ -157,58 +192,25 @@ impl<'a> Argument<'a> {
 impl<'a> CommonInternal<'a> for Argument<'a> {
     fn help_left(&self) -> String {
         let mut output = String::new();
-        let mut short = String::new();
+        let mut short = vec![];
         let mut long = vec![];
 
         for instigator in self.instigators {
             if instigator.len() < 2 {
-                short.push_str(instigator)
+                short.push(instigator)
             } else {
                 long.push(instigator)
             }
         }
 
-        let short_exists = short.len() != 0;
-        if short_exists {
-            output.push('-');
-            output.push_str(&short);
-        }
+        // FIXME: make less janky formats, use write! instead
+        let mut fmtd: Vec<String> = short.iter().map(|s| format!("-{}", s)).collect();
+        fmtd.extend(long.iter().map(|l| format!("--{}", l)));
 
-        if long.len() != 0 {
-            if short_exists {
-                output.push(' ');
-            }
-
-            for instigator in long {
-                output.push_str("--");
-                output.push_str(instigator);
-            }
-        }
-
+        output.push_str(fmtd.join(" ").as_str());
         output.push_str(&self.help_type.to_string());
         output
     }
-
-    fn help_full(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()> {
-        todo!()
-    }
-}
-
-fn tab_to<'a>(buf: &mut impl Write, lr: Vec<(String, &Help<'a>)>) -> Result<()> {
-    let mut max = 0;
-    for (l, _) in lr.iter() {
-        let l_len = l.len();
-        if l_len > max {
-            max = l_len
-        }
-    }
-
-    for (l, r) in lr {
-        let padding = " ".repeat(max - l.len());
-        buf.write_fmt(format_args!("  {}{}    {}\n", l, padding, r))?;
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -237,7 +239,7 @@ mod tests {
             help_type: HelpType::Path,
             data: None,
         };
-        assert_eq!(arg.help_left(), "-ab --append [path]".to_string())
+        assert_eq!(arg.help_left(), "-a -b --append [path]".to_string())
     }
 
     #[test]
@@ -265,12 +267,14 @@ mod tests {
         };
         let mut buf = vec![];
 
-        cmd.help_full(&mut buf, vec!["monster"]).unwrap();
+        cmd.help(&mut buf, vec!["monster"]).unwrap();
 
         let mut lines = str::from_utf8(buf.as_slice()).unwrap().lines();
         lines.next();
         let res = lines.collect::<Vec<&str>>().join("\n");
 
-        assert_eq!(res, "\n  This is a simple command\n\nArguments:\n  -ab --append [path]    No help provided\n  -z --zeta [text]       Simple help".to_string())
+        assert_eq!(res, "\n  This is a simple command\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 }
+
+// cli!("hello" => {help: "woah", parses: String, below: ["-a|--append": {parses: PathBuf}, "-b|-c": {}]}, "-zeta": {help: "just an awesome argument"})
