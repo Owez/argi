@@ -179,8 +179,9 @@ impl<'a> Command<'a> {
         let mut any = false;
 
         if self.subcmds.len() != 0 {
-            any = true;
             buf.write(b"\n\nCommands:\n")?;
+            any = true;
+
             let lr = self
                 .subcmds
                 .iter()
@@ -190,8 +191,13 @@ impl<'a> Command<'a> {
         }
 
         if self.args.len() != 0 {
+            buf.write(if any {
+                b"\nArguments:\n"
+            } else {
+                b"\n\nArguments:\n"
+            })?;
             any = true;
-            buf.write(b"\n\nArguments:\n")?;
+
             let lr = self
                 .args
                 .iter()
@@ -258,6 +264,41 @@ mod tests {
     use super::*;
     use std::str;
 
+    const ID_STRING: &str = "AAAAAA";
+
+    fn example_cmd<'a>() -> Command<'a> {
+        Command {
+            name: "mine",
+            help: "This is a simple command".into(),
+            help_type: HelpType::Number,
+            args: vec![
+                Argument {
+                    instigators: &["a", "b", "append"],
+                    help: None.into(),
+                    help_type: HelpType::Path,
+                    data: None,
+                },
+                Argument {
+                    instigators: &["z", "zeta"],
+                    help: "Simple help".into(),
+                    help_type: HelpType::Text,
+                    data: None,
+                },
+            ],
+            subcmds: vec![Command {
+                name: "water",
+                help: None.into(),
+                help_type: HelpType::None,
+                args: vec![],
+                subcmds: vec![],
+                data: None,
+                run: Some(Box::new(|_, _| println!("{}", ID_STRING))),
+            }],
+            data: None,
+            run: None,
+        }
+    }
+
     #[test]
     fn cmd_help_left() {
         let cmd = Command {
@@ -285,40 +326,42 @@ mod tests {
 
     #[test]
     fn cmd_help_full() {
-        let cmd = Command {
-            name: "mine",
-            help: "This is a simple command".into(),
-            help_type: HelpType::Number,
-            args: vec![
-                Argument {
-                    instigators: &["a", "b", "append"],
-                    help: None.into(),
-                    help_type: HelpType::Path,
-                    data: None,
-                },
-                Argument {
-                    instigators: &["z", "zeta"],
-                    help: "Simple help".into(),
-                    help_type: HelpType::Text,
-                    data: None,
-                },
-            ],
-            subcmds: vec![],
-            data: None,
-            run: None,
-        };
         let mut buf = vec![];
 
-        cmd.help(&mut buf, vec!["monster"]).unwrap();
+        example_cmd().help(&mut buf, vec!["monster"]).unwrap();
 
         let mut lines = str::from_utf8(buf.as_slice()).unwrap().lines();
         lines.next();
         let res = lines.collect::<Vec<&str>>().join("\n");
 
-        assert_eq!(res, "\n  This is a simple command\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
+        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 
-    // TODO: launch testing
+    #[test]
+    fn launching() {
+        let mut cmd = example_cmd();
+        let mut print_buf: Vec<u8> = vec![];
+        let mut args = vec!["mine".to_string()];
+
+        // mine only, shouldn't run water
+        cmd.launch_custom(&mut print_buf, args.clone().into_iter())
+            .unwrap();
+        assert_ne!(
+            &print_buf[print_buf.len() - ID_STRING.len()..],
+            ID_STRING.as_bytes()
+        );
+
+        // water, should run water but not mine
+        args.push("water".to_string());
+        print_buf = vec![];
+        cmd.launch_custom(&mut print_buf, args.into_iter()).unwrap();
+        assert_eq!(
+            &print_buf[print_buf.len() - ID_STRING.len()..],
+            ID_STRING.as_bytes()
+        );
+    }
+
+    // TODO: parse
 }
 
 // /// High-level builder for a new command-line-interface
