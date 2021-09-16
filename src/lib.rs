@@ -125,6 +125,19 @@ impl<'a> Command<'a> {
         }
     }
 
+    /// Creates new special command for the root, containing all subsequent for ease-of-use
+    fn new_root(help: Option<&'a str>) -> Self {
+        Self {
+            name: "",
+            help: help.into(),
+            help_type: HelpType::None,
+            args: vec![],
+            subcmds: vec![],
+            data: None,
+            run: None,
+        }
+    }
+
     /// Writes full help message to buffer
     fn help(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()> {
         // TODO: multi-line arguments
@@ -308,4 +321,27 @@ mod tests {
     // TODO: launch testing
 }
 
-// cli!("hello" => {help: "woah", parses: String, below: ["-a|--append": {run: |data| set_ext = data]}, "-zeta": {help: "just an awesome argument"})
+// /// High-level builder for a new command-line-interface
+// #[macro_export]
+// macro_rules! cli {
+
+// }
+
+macro_rules! cli_inner {
+    ( $name:tt ( => help: $help:tt, parses: $parses:ident, run: $run:expr, below: [ (cli_inner)* ] )? ) => {
+        todo!()
+    };
+}
+
+// cli!(help: "general cli help", "inner_stuff" => {help: "the inner stuff appears here"}, "--arg" => {run: |data| data.split(" ")})
+// cli_inner!(
+//     "command" => {
+//         help: "given help here",
+//         run: |data| data.destroy(),
+//         below: [
+//             "other" => {help: "mini help", run: |data| data},
+//             "-f --final" => {help: "another mini help"},
+//             "basic"
+//         ]
+//     }
+// )
