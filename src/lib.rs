@@ -73,21 +73,35 @@ trait CommonInternal<'a> {
     fn help_left(&self) -> String;
 }
 
+/// Contains common elements to both commands and arguments which can be used after launch to provide context
+struct AfterLaunch<'a> {
+    /// Raw data found from parsing, if found
+    data: Option<String>,
+    /// User-implemented closure which is ran at parse-time, if found
+    run: Option<Box<dyn FnMut(Vec<&Argument<'a>>, &str)>>,
+}
+
+impl<'a> Default for AfterLaunch<'a> {
+    fn default() -> Self {
+        Self {
+            data: None,
+            run: None,
+        }
+    }
+}
+
 pub struct Command<'a> {
     pub name: &'a str,
     pub help: Help<'a>,
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
-    /// Raw data found from parsing, if found
-    data: Option<String>,
-    /// User-implemented closure which is ran at parse-time, if found
-    run: Option<Box<dyn FnMut(Vec<&Argument<'a>>, &str)>>, // TODO: use
+    after_launch: AfterLaunch<'a>,
 }
 
 impl<'a> Command<'a> {
     pub fn parse<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
-        T::from_str(self.data.clone().unwrap().as_str())
+        T::from_str(self.after_launch.data.clone().unwrap().as_str())
     }
 
     pub fn launch(&mut self) -> Result<()> {
@@ -104,22 +118,21 @@ impl<'a> Command<'a> {
         mut args: impl Iterator<Item = String>,
     ) -> Result<()> {
         const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
+        let stack = vec![]; // TODO: use and make mut for subcommand
         let arg = match args.next() {
             Some(string) => string,
             None => {
-                self.help(buf, vec![])?;
+                self.help(buf, stack)?;
                 process::exit(1)
             }
         };
         let arg_str = arg.as_str();
 
         if HELP_POSSIBLES.contains(&arg_str) {
-            self.help(buf, vec![])?;
+            self.help(buf, stack)?;
             process::exit(0)
-        } else if arg.starts_with("--") {
-            todo!("long argument")
         } else if arg.starts_with("-") {
-            todo!("short argument")
+            self.arg_flow(buf, stack, arg)
         } else {
             todo!("subcommand")
         }
@@ -133,13 +146,41 @@ impl<'a> Command<'a> {
             help_type: HelpType::None,
             args: vec![],
             subcmds: vec![],
-            data: None,
-            run: None,
+            after_launch: AfterLaunch::default(),
         }
     }
 
+    /// Continuing flow for an argument once `-` token is detected
+    fn arg_flow(&mut self, buf: &mut impl Write, stack: Vec<&str>, arg: String) -> Result<()> {
+        let cut_len = if arg.starts_with("--") { 2 } else { 1 }; // TODO: implement multiple on `-` to mean *and*
+        let opt_arg = self.search_args_mut(&arg[cut_len..]);
+
+        match opt_arg {
+            Some(_arg) => todo!("arg"),
+            None => {
+                self.help(buf, vec![])?;
+                let for_stack = match stack.len() {
+                    0 => String::new(),
+                    _ => format!(" for '{}' command", stack.join(" ")),
+                };
+                eprintln!("Argument '{}' not found{}", arg, for_stack);
+                process::exit(1)
+            }
+        }
+    }
+
+    /// Searches argument for mutable argument
+    fn search_args_mut(&mut self, instigator: &str) -> Option<&mut Argument<'a>> {
+        for arg in self.args.iter_mut() {
+            if arg.instigators.contains(&instigator) {
+                return Some(arg);
+            }
+        }
+        None
+    }
+
     /// Writes full help message to buffer
-    fn help(&self, buf: &mut impl Write, level: Vec<&'a str>) -> Result<()> {
+    fn help(&self, buf: &mut impl Write, stack: Vec<&str>) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         let exe_path = env::current_exe().map_err(|_| Error::InvalidCurExe)?;
@@ -150,8 +191,8 @@ impl<'a> Command<'a> {
             .ok_or(Error::InvalidCurExe)?;
         buf.write_fmt(format_args!("Usage: {}", exe))?;
 
-        if level.len() != 0 {
-            buf.write_fmt(format_args!("{} ", level.join(" ")))?;
+        if stack.len() != 0 {
+            buf.write_fmt(format_args!("{} ", stack.join(" ")))?;
         }
         buf.write_fmt(format_args!(
             "{}{} [options]\n\n  {}",
@@ -226,12 +267,12 @@ pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
     pub help_type: HelpType,
-    data: Option<String>,
+    after_launch: AfterLaunch<'a>,
 }
 
 impl<'a> Argument<'a> {
     pub fn parse<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
-        T::from_str(self.data.clone().unwrap().as_str())
+        T::from_str(self.after_launch.data.clone().unwrap().as_str())
     }
 }
 
@@ -262,7 +303,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str;
+    use std::{path::PathBuf, str};
 
     const ID_STRING: &str = "AAAAAA";
 
@@ -276,13 +317,13 @@ mod tests {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
                     help_type: HelpType::Path,
-                    data: None,
+                    after_launch: AfterLaunch::default(),
                 },
                 Argument {
                     instigators: &["z", "zeta"],
                     help: "Simple help".into(),
                     help_type: HelpType::Text,
-                    data: None,
+                    after_launch: AfterLaunch::default(),
                 },
             ],
             subcmds: vec![Command {
@@ -291,11 +332,12 @@ mod tests {
                 help_type: HelpType::None,
                 args: vec![],
                 subcmds: vec![],
-                data: None,
-                run: Some(Box::new(|_, _| println!("{}", ID_STRING))),
+                after_launch: AfterLaunch {
+                    data: None,
+                    run: Some(Box::new(|_, _| println!("{}", ID_STRING))),
+                },
             }],
-            data: None,
-            run: None,
+            after_launch: AfterLaunch::default(),
         }
     }
 
@@ -307,8 +349,7 @@ mod tests {
             help_type: HelpType::Number,
             args: vec![],
             subcmds: vec![],
-            data: None,
-            run: None,
+            after_launch: AfterLaunch::default(),
         };
         assert_eq!(cmd.help_left(), "mine [number]".to_string());
     }
@@ -319,7 +360,7 @@ mod tests {
             instigators: &["a", "b", "append"],
             help: None.into(),
             help_type: HelpType::Path,
-            data: None,
+            after_launch: AfterLaunch::default(),
         };
         assert_eq!(arg.help_left(), "-a -b --append [path]".to_string())
     }
@@ -338,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn launching() {
+    fn launch_cmd_run() {
         let mut cmd = example_cmd();
         let mut print_buf: Vec<u8> = vec![];
         let mut args = vec!["mine".to_string()];
@@ -361,7 +402,37 @@ mod tests {
         );
     }
 
-    // TODO: parse
+    #[test]
+    fn parse_cmd() {
+        const PATH: &str = "./src/lib.rs";
+        let cmd = Command {
+            name: "example",
+            help: None.into(),
+            help_type: HelpType::Text,
+            args: vec![],
+            subcmds: vec![],
+            after_launch: AfterLaunch {
+                data: Some(PATH.to_string()),
+                run: None,
+            },
+        };
+        assert_eq!(cmd.parse(), Ok(PathBuf::from(PATH)));
+    }
+
+    #[test]
+    fn parse_arg() {
+        const PATH: &str = "./src/lib.rs";
+        let arg = Argument {
+            instigators: &["a", "after"],
+            help: None.into(),
+            help_type: HelpType::Path,
+            after_launch: AfterLaunch {
+                data: Some(PATH.into()),
+                run: None,
+            },
+        };
+        assert_eq!(arg.parse(), Ok(PathBuf::from(PATH)))
+    }
 }
 
 // /// High-level builder for a new command-line-interface
@@ -369,12 +440,11 @@ mod tests {
 // macro_rules! cli {
 
 // }
-
-macro_rules! cli_inner {
-    ( $name:tt ( => help: $help:tt, parses: $parses:ident, run: $run:expr, below: [ (cli_inner)* ] )? ) => {
-        todo!()
-    };
-}
+// macro_rules! cli_inner {
+//     ( $name:tt ( => help: $help:tt, parses: $parses:ident, run: $run:expr, below: [ (cli_inner)* ] )? ) => {
+//         todo!()
+//     };
+// }
 
 // cli!(help: "general cli help", "inner_stuff" => {help: "the inner stuff appears here"}, "--arg" => {run: |data| data.split(" ")})
 // cli_inner!(
