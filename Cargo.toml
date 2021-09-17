@@ -1,4 +1,6 @@
 [package]
-name = "climake"
+name = "ucli"
+description = "The simple cli library"
 version = "0.1.0"
 edition = "2018"
+authors = ["Owen Griffiths <root@ogriffiths.com>"]
