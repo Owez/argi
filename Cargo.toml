@@ -1,6 +1,8 @@
 [package]
 name = "ucli"
-description = "The simple cli library"
 version = "0.1.0"
-edition = "2018"
+description = "The simple cli library"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
 authors = ["Owen Griffiths <root@ogriffiths.com>"]
+edition = "2018"
