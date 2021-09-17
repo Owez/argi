@@ -7,12 +7,8 @@ mod error;
 
 pub use error::{Error, Result};
 
-use std::{
-    env, fmt,
-    io::{self, Write},
-    process,
-    str::FromStr,
-};
+use std::io::{self, Write};
+use std::{env, fmt, process, str::FromStr};
 
 pub enum HelpType {
     None,
@@ -74,14 +70,14 @@ trait CommonInternal<'a> {
 }
 
 /// Contains common elements to both commands and arguments which can be used after launch to provide context
-struct AfterLaunch<'a> {
+struct AfterLaunch {
     /// Raw data found from parsing, if found
     data: Option<String>,
     /// User-implemented closure which is ran at parse-time, if found
-    run: Option<Box<dyn FnMut(Vec<&Argument<'a>>, &str)>>,
+    run: Option<Box<dyn FnMut(&str)>>,
 }
 
-impl<'a> Default for AfterLaunch<'a> {
+impl<'a> Default for AfterLaunch {
     fn default() -> Self {
         Self {
             data: None,
@@ -96,7 +92,7 @@ pub struct Command<'a> {
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
-    after_launch: AfterLaunch<'a>,
+    after_launch: AfterLaunch,
 }
 
 impl<'a> Command<'a> {
@@ -132,31 +128,33 @@ impl<'a> Command<'a> {
             self.help(buf, stack)?;
             process::exit(0)
         } else if arg.starts_with("-") {
-            self.arg_flow(buf, stack, arg)
+            self.arg_flow(buf, &mut args, stack, arg)
         } else {
             todo!("subcommand")
         }
     }
 
-    /// Creates new special command for the root, containing all subsequent for ease-of-use
-    fn new_root(help: Option<&'a str>) -> Self {
-        Self {
-            name: "",
-            help: help.into(),
-            help_type: HelpType::None,
-            args: vec![],
-            subcmds: vec![],
-            after_launch: AfterLaunch::default(),
-        }
-    }
-
     /// Continuing flow for an argument once `-` token is detected
-    fn arg_flow(&mut self, buf: &mut impl Write, stack: Vec<&str>, arg: String) -> Result<()> {
+    fn arg_flow(
+        &mut self,
+        buf: &mut impl Write,
+        args: &mut impl Iterator<Item = String>,
+        stack: Vec<&str>,
+        arg: String,
+    ) -> Result<()> {
         let cut_len = if arg.starts_with("--") { 2 } else { 1 }; // TODO: implement multiple on `-` to mean *and*
         let opt_arg = self.search_args_mut(&arg[cut_len..]);
 
         match opt_arg {
-            Some(_arg) => todo!("arg"),
+            Some(arg) => {
+                let data = args.next().ok_or(Error::NoDataToParse)?;
+
+                match &mut arg.after_launch.run {
+                    Some(to_run) => to_run(&data),
+                    None => (),
+                };
+                arg.after_launch.data = Some(data);
+            }
             None => {
                 self.help(buf, vec![])?;
                 let for_stack = match stack.len() {
@@ -167,6 +165,8 @@ impl<'a> Command<'a> {
                 process::exit(1)
             }
         }
+
+        Ok(())
     }
 
     /// Searches argument for mutable argument
@@ -267,7 +267,7 @@ pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
     pub help_type: HelpType,
-    after_launch: AfterLaunch<'a>,
+    after_launch: AfterLaunch,
 }
 
 impl<'a> Argument<'a> {
@@ -334,7 +334,7 @@ mod tests {
                 subcmds: vec![],
                 after_launch: AfterLaunch {
                     data: None,
-                    run: Some(Box::new(|_, _| println!("{}", ID_STRING))),
+                    run: Some(Box::new(|_| println!("{}", ID_STRING))),
                 },
             }],
             after_launch: AfterLaunch::default(),
@@ -433,6 +433,8 @@ mod tests {
         };
         assert_eq!(arg.parse(), Ok(PathBuf::from(PATH)))
     }
+
+    // TODO: arg_flow in Command
 }
 
 // /// High-level builder for a new command-line-interface
