@@ -413,29 +413,29 @@ mod tests {
         assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 
-    // TODO: redo with stdout/stderr as the library now properly errors
-    // #[test]
-    // fn launch_cmd_run() {
-    //     let mut cmd = example_cmd();
-    //     let mut print_buf: Vec<u8> = vec![];
-    //     let mut args = vec!["mine".to_string()];
+    #[test]
+    fn launch_cmd_run() {
+        // TODO: redo with stdout/stderr as the library now properly errors
+        let mut cmd = example_cmd();
+        let mut print_buf: Vec<u8> = vec![];
+        let mut args = vec!["mine".to_string()];
 
-    //     // mine only, shouldn't run water
-    //     cmd.launch_custom(args.clone().into_iter()).unwrap();
-    //     assert_ne!(
-    //         &print_buf[print_buf.len() - ID_STRING.len()..],
-    //         ID_STRING.as_bytes()
-    //     );
+        // mine only, shouldn't run water
+        cmd.launch_custom(args.clone().into_iter()).unwrap();
+        assert_ne!(
+            &print_buf[print_buf.len() - ID_STRING.len()..],
+            ID_STRING.as_bytes()
+        );
 
-    //     // water, should run water but not mine
-    //     args.push("water".to_string());
-    //     print_buf = vec![];
-    //     cmd.launch_custom(args.into_iter()).unwrap();
-    //     assert_eq!(
-    //         &print_buf[print_buf.len() - ID_STRING.len()..],
-    //         ID_STRING.as_bytes()
-    //     );
-    // }
+        // water, should run water but not mine
+        args.push("water".to_string());
+        print_buf = vec![];
+        cmd.launch_custom(args.into_iter()).unwrap();
+        assert_eq!(
+            &print_buf[print_buf.len() - ID_STRING.len()..],
+            ID_STRING.as_bytes()
+        );
+    }
 
     #[test]
     fn parse_cmd() {
@@ -469,7 +469,10 @@ mod tests {
         assert_eq!(arg.parse(), Ok(PathBuf::from(PATH)))
     }
 
-    // TODO: arg_flow in Command
+    #[test]
+    fn arguments() {
+        todo!("test arg_flow")
+    }
 }
 
 // /// High-level builder for a new command-line-interface
