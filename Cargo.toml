@@ -1,5 +1,5 @@
 [package]
-name = "ucli"
+name = "clonk"
 version = "0.1.0"
 description = "The simple cli library"
 readme = "README.md"
