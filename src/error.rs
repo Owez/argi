@@ -18,8 +18,12 @@ pub enum Error {
     Io(io::Error),
     /// Current executable name is invalid
     InvalidCurExe,
+    /// No commands where provided at all
+    NoCommandsProvided,
     /// Command name provided could not be found
     CommandNotFound(String),
+    /// Argument name provided could not be found
+    ArgumentNotFound(String),
 }
 
 impl From<io::Error> for Error {
@@ -48,7 +52,11 @@ impl fmt::Display for Error {
             ),
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),
+            Error::NoCommandsProvided => write!(f, "No commands where provided"),
             Error::CommandNotFound(name) => {
+                write!(f, "Command '{}' provided could not be found", name)
+            }
+            Error::ArgumentNotFound(name) => {
                 write!(f, "Command '{}' provided could not be found", name)
             }
         }
