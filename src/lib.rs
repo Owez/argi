@@ -115,22 +115,20 @@ impl<'a> Command<'a> {
 
     pub fn launch(&mut self) {
         const ERROR: &str = "Error: ";
-        loop {
-            match self.parse_next(&mut env::args(), &mut vec![]) {
-                Ok(()) => (),
-                Err(err) => {
-                    // help
-                    let stderr = io::stderr();
-                    let mut stderr_lock = stderr.lock();
-                    match self.help(&mut stderr_lock) {
-                        Ok(()) => (),
-                        Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
-                    }
-
-                    // print error
-                    eprintln!("{}{}", ERROR, err);
-                    process::exit(1)
+        match self.parse_next(&mut env::args(), &mut vec![]) {
+            Ok(()) => (),
+            Err(err) => {
+                // help
+                let stderr = io::stderr();
+                let mut stderr_lock = stderr.lock();
+                match self.help(&mut stderr_lock) {
+                    Ok(()) => (),
+                    Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
                 }
+
+                // print error
+                eprintln!("{}{}", ERROR, err);
+                process::exit(1)
             }
         }
     }
@@ -141,6 +139,7 @@ impl<'a> Command<'a> {
         stream: &mut impl Iterator<Item = String>,
         call: &mut Vec<String>,
     ) -> Result<()> {
+        // TODO: recurse
         let left = match stream.next() {
             Some(val) if HELP_POSSIBLES.contains(&val.as_str()) => {
                 self.help(&mut io::stdout())?;
@@ -168,7 +167,10 @@ impl<'a> Command<'a> {
             todo!("subcommand")
         }
 
-        Ok(())
+        // TODO: check logic of above vs below
+
+        // recurse for arguments until stream end, all else is delt with via subcommand
+        self.parse_next(stream, call)
     }
 
     /// Searches current instance for given argument by it's instigator
