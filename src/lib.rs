@@ -96,7 +96,7 @@ pub struct Command<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn parse<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
+    pub fn parse_into<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
         T::from_str(self.after_launch.data.clone().unwrap().as_str())
     }
 
@@ -113,28 +113,28 @@ impl<'a> Command<'a> {
     }
 
     /// Launches parsing with custom io buffer and argument source; doesn't auto-print errors either
-    pub fn launch_custom(&mut self, mut args: impl Iterator<Item = String>) -> Result<()> {
+    pub fn launch_custom(&mut self, mut input_args: impl Iterator<Item = String>) -> Result<()> {
         const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
         let mut stack = vec![];
-        let arg = match args.next() {
+        let input_arg = match input_args.next() {
             Some(string) => string,
             None => {
                 self.help_stderr(stack)?;
                 return Err(Error::NoCommandsProvided);
             }
         };
-        let arg_str = arg.as_str();
+        let input_arg_str = input_arg.as_str();
 
-        if HELP_POSSIBLES.contains(&arg_str) {
+        if HELP_POSSIBLES.contains(&input_arg_str) {
             // they asked for help, return
             self.help(&mut io::stdout(), stack)
-        } else if arg.starts_with("-") {
+        } else if input_arg.starts_with("-") {
             // argument
-            self.arg_flow(&mut args, stack, arg)
-        } else if !self.subcmd_flow(&mut args, &mut stack, &arg)? {
+            self.arg_flow(&mut input_args, stack, input_arg)
+        } else if !self.subcmd_flow(&mut input_args, &mut stack, &input_arg)? {
             // no commands found
             self.help_stderr(stack.clone())?;
-            Err(Error::CommandNotFound(arg))
+            Err(Error::CommandNotFound(input_arg))
         } else {
             // well-formed command(s)
             Ok(())
@@ -144,7 +144,7 @@ impl<'a> Command<'a> {
     /// Recursive flow for subcommands, starting from root and returning if the name has yet been found
     fn subcmd_flow(
         &mut self,
-        args: &mut impl Iterator<Item = String>,
+        input_args: &mut impl Iterator<Item = String>,
         stack: &mut Vec<&str>,
         arg: &str,
     ) -> Result<bool> {
@@ -152,7 +152,7 @@ impl<'a> Command<'a> {
             Ok(true)
         } else {
             for subcmd in self.subcmds.iter_mut() {
-                match subcmd.subcmd_flow(args, stack, arg)? {
+                match subcmd.subcmd_flow(input_args, stack, arg)? {
                     true => return Ok(true),
                     false => continue,
                 }
@@ -164,7 +164,7 @@ impl<'a> Command<'a> {
     /// Recursive flow for an argument once `-` token is detected
     fn arg_flow(
         &mut self,
-        args: &mut impl Iterator<Item = String>,
+        input_args: &mut impl Iterator<Item = String>,
         stack: Vec<&str>,
         arg: String,
     ) -> Result<()> {
@@ -173,7 +173,7 @@ impl<'a> Command<'a> {
 
         match opt_arg {
             Some(arg) => {
-                let data = args.next().ok_or(Error::NoDataToParse)?;
+                let data = input_args.next().ok_or(Error::NoDataToParse)?;
 
                 match &mut arg.after_launch.run {
                     Some(to_run) => to_run(&data),
@@ -306,7 +306,7 @@ pub struct Argument<'a> {
 }
 
 impl<'a> Argument<'a> {
-    pub fn parse<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
+    pub fn parse_into<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
         T::from_str(self.after_launch.data.clone().unwrap().as_str())
     }
 }
@@ -352,7 +352,7 @@ mod tests {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
                     help_type: HelpType::Path,
-                    after_launch: AfterLaunch::default(),
+                    after_launch: AfterLaunch::default(), // TODO: after launch to ensure working with "arguments" test
                 },
                 Argument {
                     instigators: &["z", "zeta"],
@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_cmd() {
+    fn cmd_parse_into() {
         const PATH: &str = "./src/lib.rs";
         let cmd = Command {
             name: "example",
@@ -451,11 +451,11 @@ mod tests {
                 run: None,
             },
         };
-        assert_eq!(cmd.parse(), Ok(PathBuf::from(PATH)));
+        assert_eq!(cmd.parse_into(), Ok(PathBuf::from(PATH)));
     }
 
     #[test]
-    fn parse_arg() {
+    fn arg_parse_into() {
         const PATH: &str = "./src/lib.rs";
         let arg = Argument {
             instigators: &["a", "after"],
@@ -466,12 +466,16 @@ mod tests {
                 run: None,
             },
         };
-        assert_eq!(arg.parse(), Ok(PathBuf::from(PATH)))
+        assert_eq!(arg.parse_into(), Ok(PathBuf::from(PATH)))
     }
 
     #[test]
     fn arguments() {
-        todo!("test arg_flow")
+        // TODO: check argument run stdout
+        let mut cmd = example_cmd();
+        let mut input_args = vec!["mine".to_string()].into_iter();
+        cmd.arg_flow(&mut input_args, vec![], "-a".to_string())
+            .unwrap()
     }
 }
 
