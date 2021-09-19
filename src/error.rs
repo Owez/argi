@@ -9,7 +9,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub enum Error {
     /// Data was required after command/argument but was not found
-    DataRequired(String),
+    DataRequired(Vec<String>),
     /// Command or argument shouldn't have data attached but it does
     UnknownData,
     /// Parsing method was called but the cli has not yet been launched
@@ -21,9 +21,9 @@ pub enum Error {
     /// No commands where provided at all
     NoCommandsProvided,
     /// Command name provided could not be found
-    CommandNotFound(String),
+    CommandNotFound(Vec<String>),
     /// Argument name provided could not be found
-    ArgumentNotFound(String),
+    ArgumentNotFound(Vec<String>),
 }
 
 impl From<io::Error> for Error {
@@ -35,11 +35,11 @@ impl From<io::Error> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::DataRequired(name) => {
+            Error::DataRequired(call) => {
                 write!(
                     f,
                     "Data was required after \".. {}\" but was not found",
-                    name
+                    fmt_call(call)
                 )
             }
             Error::UnknownData => write!(
@@ -53,12 +53,24 @@ impl fmt::Display for Error {
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),
             Error::NoCommandsProvided => write!(f, "No commands where provided"),
-            Error::CommandNotFound(name) => {
-                write!(f, "Command '{}' provided could not be found", name)
+            Error::CommandNotFound(call) => {
+                write!(
+                    f,
+                    "Command '{}' provided could not be found",
+                    fmt_call(call)
+                )
             }
-            Error::ArgumentNotFound(name) => {
-                write!(f, "Command '{}' provided could not be found", name)
+            Error::ArgumentNotFound(call) => {
+                write!(
+                    f,
+                    "Command '{}' provided could not be found",
+                    fmt_call(call)
+                )
             }
         }
     }
+}
+
+fn fmt_call(call: &Vec<String>) -> String {
+    call.join(" ") // TODO: cur exe here
 }

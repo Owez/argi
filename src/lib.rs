@@ -8,14 +8,20 @@ mod error;
 pub use error::{Error, Result};
 
 use std::io::{self, Write};
+use std::process;
 use std::{env, fmt, str::FromStr};
 
+/// Whitelisted overriding help targets
+const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
+
+#[derive(PartialEq, Eq)]
 pub enum HelpType {
     None,
     Text,
     Number,
     Path,
     Custom(&'static str),
+    // TODO: optional help
 }
 
 impl Default for HelpType {
@@ -36,6 +42,7 @@ impl fmt::Display for HelpType {
     }
 }
 
+/// Help message to display to the user
 pub struct Help<'a>(Option<&'a str>);
 
 impl<'a> Default for Help<'a> {
@@ -65,8 +72,14 @@ impl<'a> fmt::Display for Help<'a> {
     }
 }
 
+/// Common methods and data items to all call types
 trait CommonInternal<'a> {
+    /// Generates leftmost help message
     fn help_left(&self) -> String;
+    /// Checks the help type for the intended data
+    fn no_data(&self) -> bool;
+    /// Applies [AfterLaunch]-related tasks
+    fn apply_afters(&mut self, data: String);
 }
 
 /// Contains common elements to both commands and arguments which can be used after launch to provide context
@@ -74,7 +87,7 @@ struct AfterLaunch {
     /// Raw data found from parsing, if found
     data: Option<String>,
     /// User-implemented closure which is ran at parse-time, if found
-    run: Option<Box<dyn FnMut(&str)>>,
+    run: Option<Box<dyn FnMut(Option<&str>)>>,
 }
 
 impl<'a> Default for AfterLaunch {
@@ -100,107 +113,80 @@ impl<'a> Command<'a> {
         T::from_str(self.after_launch.data.clone().unwrap().as_str())
     }
 
-    pub fn launch(&mut self) -> Result<()> {
-        let mut args = env::args();
-        args.next();
-        match self.launch_custom(args) {
-            Ok(()) => Ok(()),
-            Err(err) => {
-                eprintln!("Error: {}", err);
-                Err(err)
-            }
-        }
-    }
+    pub fn launch(&mut self) {
+        const ERROR: &str = "Error: ";
+        loop {
+            match self.parse_next(&mut env::args(), &mut vec![]) {
+                Ok(()) => (),
+                Err(err) => {
+                    // help
+                    let stderr = io::stderr();
+                    let mut stderr_lock = stderr.lock();
+                    match self.help(&mut stderr_lock) {
+                        Ok(()) => (),
+                        Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
+                    }
 
-    /// Launches parsing with custom io buffer and argument source; doesn't auto-print errors either
-    pub fn launch_custom(&mut self, mut input_args: impl Iterator<Item = String>) -> Result<()> {
-        const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
-        let mut stack = vec![];
-        let input_arg = match input_args.next() {
-            Some(string) => string,
-            None => {
-                self.help_stderr(stack)?;
-                return Err(Error::NoCommandsProvided);
-            }
-        };
-        let input_arg_str = input_arg.as_str();
-
-        if HELP_POSSIBLES.contains(&input_arg_str) {
-            // they asked for help, return
-            self.help(&mut io::stdout(), stack)
-        } else if input_arg.starts_with("-") {
-            // argument
-            self.arg_flow(&mut input_args, stack, input_arg)
-        } else if !self.subcmd_flow(&mut input_args, &mut stack, &input_arg)? {
-            // no commands found
-            self.help_stderr(stack.clone())?;
-            Err(Error::CommandNotFound(input_arg))
-        } else {
-            // well-formed command(s)
-            Ok(())
-        }
-    }
-
-    /// Recursive flow for subcommands, starting from root and returning if the name has yet been found
-    fn subcmd_flow(
-        &mut self,
-        input_args: &mut impl Iterator<Item = String>,
-        stack: &mut Vec<&str>,
-        arg: &str,
-    ) -> Result<bool> {
-        if arg == self.name {
-            Ok(true)
-        } else {
-            for subcmd in self.subcmds.iter_mut() {
-                match subcmd.subcmd_flow(input_args, stack, arg)? {
-                    true => return Ok(true),
-                    false => continue,
+                    // print error
+                    eprintln!("{}{}", ERROR, err);
+                    process::exit(1)
                 }
             }
-            Ok(false)
         }
     }
 
-    /// Recursive flow for an argument once `-` token is detected
-    fn arg_flow(
+    /// Parses entirety of next item and processes [AfterLaunch] tasks
+    fn parse_next(
         &mut self,
-        input_args: &mut impl Iterator<Item = String>,
-        stack: Vec<&str>,
-        arg: String,
+        stream: &mut impl Iterator<Item = String>,
+        call: &mut Vec<String>,
     ) -> Result<()> {
-        let cut_len = if arg.starts_with("--") { 2 } else { 1 }; // TODO: implement multiple on `-` to mean *and*
-        let opt_arg = self.search_args_mut(&arg[cut_len..]);
+        let left = match stream.next() {
+            Some(val) if HELP_POSSIBLES.contains(&val.as_str()) => {
+                self.help(&mut io::stdout())?;
+                return Ok(());
+            } // in whitelist, return with help
+            Some(val) => val,      // good value
+            None => return Ok(()), // end of stream
+        };
+        call.push(left.clone()); // add new left to call stream
 
-        match opt_arg {
-            Some(arg) => {
-                let data = input_args.next().ok_or(Error::NoDataToParse)?;
-
-                match &mut arg.after_launch.run {
-                    Some(to_run) => to_run(&data),
-                    None => (),
-                };
-                arg.after_launch.data = Some(data);
-                Ok(())
+        if left.starts_with("-") {
+            // argument
+            // TODO: move to another method for testing
+            if left.starts_with("--") {
+                // gen for long arg
+                push_data(stream, call, self.search_args_mut(&call, &left[2..])?)?
+            } else {
+                // gen for short arg(s)
+                for c in left[1..].chars() {
+                    push_data(stream, call, self.search_args_mut(&call, &c.to_string())?)?
+                }
             }
-            None => {
-                self.help_stderr(stack.clone())?;
-                Err(Error::ArgumentNotFound(arg))
-            }
+        } else {
+            // subcommand
+            todo!("subcommand")
         }
+
+        Ok(())
     }
 
-    /// Searches argument for mutable argument
-    fn search_args_mut(&mut self, instigator: &str) -> Option<&mut Argument<'a>> {
+    /// Searches current instance for given argument by it's instigator
+    fn search_args_mut(
+        &mut self,
+        call: &Vec<String>,
+        instigator: &str,
+    ) -> Result<&mut Argument<'a>> {
         for arg in self.args.iter_mut() {
             if arg.instigators.contains(&instigator) {
-                return Some(arg);
+                return Ok(arg);
             }
         }
-        None
+        Err(Error::ArgumentNotFound(call.clone()))
     }
 
     /// Writes full help message to buffer
-    fn help(&self, buf: &mut impl Write, stack: Vec<&str>) -> Result<()> {
+    fn help(&self, buf: &mut impl Write) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         let exe_path = env::current_exe().map_err(|_| Error::InvalidCurExe)?;
@@ -210,10 +196,6 @@ impl<'a> Command<'a> {
             .to_str()
             .ok_or(Error::InvalidCurExe)?;
         buf.write_fmt(format_args!("Usage: {}", exe))?;
-
-        if stack.len() != 0 {
-            buf.write_fmt(format_args!("{} ", stack.join(" ")))?;
-        }
         buf.write_fmt(format_args!(
             "{}{} [options]\n\n  {}",
             self.name, self.help_type, self.help
@@ -273,21 +255,6 @@ impl<'a> Command<'a> {
 
         Ok(())
     }
-
-    /// Prints help message to stderr
-    fn help_stderr(&self, stack: Vec<&str>) -> Result<()> {
-        let stderr = io::stderr();
-        let mut buf = stderr.lock();
-        self.help(&mut buf, stack)
-    }
-}
-
-/// Uses command stack to add a "for x command" message
-fn for_command(stack: Vec<&str>) -> String {
-    match stack.len() {
-        0 => String::new(),
-        _ => format!(" for '{}'", stack.join(" ")), // FIXME: find better formatting
-    }
 }
 
 impl<'a> CommonInternal<'a> for Command<'a> {
@@ -295,6 +262,18 @@ impl<'a> CommonInternal<'a> for Command<'a> {
         let mut output = self.name.to_string();
         output.push_str(&self.help_type.to_string());
         output
+    }
+
+    // TODO: merge below two
+    fn no_data(&self) -> bool {
+        self.help_type == HelpType::None
+    }
+
+    fn apply_afters(&mut self, data: String) {
+        if let Some(run) = &mut self.after_launch.run {
+            run(Some(&data))
+        }
+        self.after_launch.data = Some(data);
     }
 }
 
@@ -333,6 +312,30 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
         output.push_str(&self.help_type.to_string());
         output
     }
+
+    fn no_data(&self) -> bool {
+        self.help_type == HelpType::None
+    }
+
+    fn apply_afters(&mut self, data: String) {
+        if let Some(run) = &mut self.after_launch.run {
+            run(Some(&data))
+        }
+        self.after_launch.data = Some(data);
+    }
+}
+
+/// If there is no help data intended, ensure there is data and then apply it
+/// via the [CommonInternal::apply_afters] implementation
+fn push_data<'a>(
+    stream: &mut impl Iterator<Item = String>,
+    call: &Vec<String>,
+    item: &mut impl CommonInternal<'a>,
+) -> Result<()> {
+    if !item.no_data() {
+        item.apply_afters(stream.next().ok_or(Error::DataRequired(call.clone()))?)
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -404,7 +407,7 @@ mod tests {
     fn cmd_help_full() {
         let mut buf = vec![];
 
-        example_cmd().help(&mut buf, vec!["monster"]).unwrap();
+        example_cmd().help(&mut buf).unwrap();
 
         let mut lines = str::from_utf8(buf.as_slice()).unwrap().lines();
         lines.next();
@@ -413,29 +416,30 @@ mod tests {
         assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 
-    #[test]
-    fn launch_cmd_run() {
-        // TODO: redo with stdout/stderr as the library now properly errors
-        let mut cmd = example_cmd();
-        let mut print_buf: Vec<u8> = vec![];
-        let mut args = vec!["mine".to_string()];
+    // TODO: remaster
+    // #[test]
+    // fn launch_cmd_run() {
+    //     // TODO: redo with stdout/stderr as the library now properly errors
+    //     let mut cmd = example_cmd();
+    //     let mut print_buf: Vec<u8> = vec![];
+    //     let mut args = vec!["mine".to_string()];
 
-        // mine only, shouldn't run water
-        cmd.launch_custom(args.clone().into_iter()).unwrap();
-        assert_ne!(
-            &print_buf[print_buf.len() - ID_STRING.len()..],
-            ID_STRING.as_bytes()
-        );
+    //     // mine only, shouldn't run water
+    //     cmd.launch_custom(args.clone().into_iter()).unwrap();
+    //     assert_ne!(
+    //         &print_buf[print_buf.len() - ID_STRING.len()..],
+    //         ID_STRING.as_bytes()
+    //     );
 
-        // water, should run water but not mine
-        args.push("water".to_string());
-        print_buf = vec![];
-        cmd.launch_custom(args.into_iter()).unwrap();
-        assert_eq!(
-            &print_buf[print_buf.len() - ID_STRING.len()..],
-            ID_STRING.as_bytes()
-        );
-    }
+    //     // water, should run water but not mine
+    //     args.push("water".to_string());
+    //     print_buf = vec![];
+    //     cmd.launch_custom(args.into_iter()).unwrap();
+    //     assert_eq!(
+    //         &print_buf[print_buf.len() - ID_STRING.len()..],
+    //         ID_STRING.as_bytes()
+    //     );
+    // }
 
     #[test]
     fn cmd_parse_into() {
@@ -469,14 +473,14 @@ mod tests {
         assert_eq!(arg.parse_into(), Ok(PathBuf::from(PATH)))
     }
 
-    #[test]
-    fn arguments() {
-        // TODO: check argument run stdout
-        let mut cmd = example_cmd();
-        let mut input_args = vec!["mine".to_string()].into_iter();
-        cmd.arg_flow(&mut input_args, vec![], "-a".to_string())
-            .unwrap()
-    }
+    // TODO: remaster
+    // #[test]
+    // fn arguments() {
+    //     // TODO: check argument run stdout
+    //     let mut cmd = example_cmd();
+    //     let mut input_stream = vec!["mine".to_string()].into_iter();
+    //     cmd.arg_flow(&mut input_stream, "-a".to_string()).unwrap()
+    // }
 }
 
 // /// High-level builder for a new command-line-interface
