@@ -1,4 +1,4 @@
-# clonk
+# argi
 
 The simple cli library
 

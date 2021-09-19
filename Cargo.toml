@@ -1,5 +1,5 @@
 [package]
-name = "clonk"
+name = "argi"
 version = "0.1.0"
 description = "The simple cli library"
 readme = "README.md"

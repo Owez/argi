@@ -8,7 +8,7 @@ mod error;
 pub use error::{Error, Result};
 
 use std::io::{self, Write};
-use std::{env, fmt, process, str::FromStr};
+use std::{env, fmt, str::FromStr};
 
 pub enum HelpType {
     None,
