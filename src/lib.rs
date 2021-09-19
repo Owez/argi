@@ -133,7 +133,7 @@ impl<'a> Command<'a> {
         }
     }
 
-    /// Parses entirety of next item and processes [AfterLaunch] tasks
+    /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
     fn parse_next(
         &mut self,
         stream: &mut impl Iterator<Item = String>,
@@ -152,16 +152,7 @@ impl<'a> Command<'a> {
 
         if left.starts_with("-") {
             // argument
-            // TODO: move to another method for testing
-            if left.starts_with("--") {
-                // gen for long arg
-                push_data(stream, call, self.search_args_mut(&call, &left[2..])?)?
-            } else {
-                // gen for short arg(s)
-                for c in left[1..].chars() {
-                    push_data(stream, call, self.search_args_mut(&call, &c.to_string())?)?
-                }
-            }
+            self.arg_flow(stream, call, left)?
         } else {
             // subcommand
             todo!("subcommand")
@@ -171,6 +162,25 @@ impl<'a> Command<'a> {
 
         // recurse for arguments until stream end, all else is delt with via subcommand
         self.parse_next(stream, call)
+    }
+
+    /// Pathway for arguments which automatically adds data to arguments if found in current instance
+    fn arg_flow(
+        &mut self,
+        stream: &mut impl Iterator<Item = String>,
+        call: &mut Vec<String>,
+        left: String,
+    ) -> Result<()> {
+        if left.starts_with("--") {
+            // gen for long arg
+            push_data(stream, call, self.search_args_mut(&call, &left[2..])?)?
+        } else {
+            // gen for short arg(s)
+            for c in left[1..].chars() {
+                push_data(stream, call, self.search_args_mut(&call, &c.to_string())?)?
+            }
+        }
+        Ok(())
     }
 
     /// Searches current instance for given argument by it's instigator
@@ -475,14 +485,18 @@ mod tests {
         assert_eq!(arg.parse_into(), Ok(PathBuf::from(PATH)))
     }
 
-    // TODO: remaster
-    // #[test]
-    // fn arguments() {
-    //     // TODO: check argument run stdout
-    //     let mut cmd = example_cmd();
-    //     let mut input_stream = vec!["mine".to_string()].into_iter();
-    //     cmd.arg_flow(&mut input_stream, "-a".to_string()).unwrap()
-    // }
+    #[test]
+    fn arguments() {
+        let data = "egdata".to_string();
+        let mut cmd = example_cmd();
+        let mut input_stream = vec![data.clone()].into_iter();
+
+        cmd.arg_flow(&mut input_stream, &mut vec![], "-a".to_string())
+            .unwrap();
+
+        assert_eq!(cmd.args[0].after_launch.data, Some(data))
+        // TOOD: more thorough testing
+    }
 }
 
 // /// High-level builder for a new command-line-interface
