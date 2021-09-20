@@ -132,6 +132,10 @@ impl<'a> Command<'a> {
         }
     }
 
+    pub fn launch_custom(&mut self, input_args: &mut impl Iterator<Item = String>) -> Result<()> {
+        self.parse_next(input_args, &mut vec![])
+    }
+
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
     fn parse_next(
         &mut self,
@@ -157,7 +161,7 @@ impl<'a> Command<'a> {
             todo!("subcommand")
         } else if self.help_type != HelpType::None {
             // data for self
-            todo!("data for self")
+            self.apply_afters(left)
         } else {
             // unwanted data
             return Err(Error::CommandNotFound(call.clone()));
@@ -229,10 +233,9 @@ impl<'a> Command<'a> {
             .ok_or(Error::InvalidCurExe)?
             .to_str()
             .ok_or(Error::InvalidCurExe)?;
-        buf.write_fmt(format_args!("Usage: {}", exe))?;
         buf.write_fmt(format_args!(
-            "{}{} [options]\n\n  {}",
-            self.name, self.help_type, self.help
+            "Usage: {}{}{} [options]\n\n  {}",
+            exe, self.name, self.help_type, self.help
         ))?;
 
         /// Automatically pads left and right hand side of help messages together
@@ -393,7 +396,7 @@ mod tests {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
                     help_type: HelpType::Path,
-                    after_launch: AfterLaunch::default(), // TODO: after launch to ensure working with "arguments" test
+                    after_launch: AfterLaunch::default(), // TODO: after launch to ensure working with "args_basic" test
                 },
                 Argument {
                     instigators: &["z", "zeta"],
@@ -454,31 +457,6 @@ mod tests {
         assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 
-    // TODO: remaster
-    // #[test]
-    // fn launch_cmd_run() {
-    //     // TODO: redo with stdout/stderr as the library now properly errors
-    //     let mut cmd = example_cmd();
-    //     let mut print_buf: Vec<u8> = vec![];
-    //     let mut args = vec!["mine".to_string()];
-
-    //     // mine only, shouldn't run water
-    //     cmd.launch_custom(args.clone().into_iter()).unwrap();
-    //     assert_ne!(
-    //         &print_buf[print_buf.len() - ID_STRING.len()..],
-    //         ID_STRING.as_bytes()
-    //     );
-
-    //     // water, should run water but not mine
-    //     args.push("water".to_string());
-    //     print_buf = vec![];
-    //     cmd.launch_custom(args.into_iter()).unwrap();
-    //     assert_eq!(
-    //         &print_buf[print_buf.len() - ID_STRING.len()..],
-    //         ID_STRING.as_bytes()
-    //     );
-    // }
-
     #[test]
     fn cmd_parse_into() {
         const PATH: &str = "./src/lib.rs";
@@ -512,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn arguments() {
+    fn args_short_basic() {
         let data = "egdata".to_string();
         let mut cmd = example_cmd();
         let mut input_stream = vec![data.clone()].into_iter();
@@ -520,8 +498,32 @@ mod tests {
         cmd.arg_flow(&mut input_stream, &mut vec![], "-a".to_string())
             .unwrap();
 
-        assert_eq!(cmd.args[0].after_launch.data, Some(data))
-        // TOOD: more thorough testing
+        assert_eq!(cmd.args[0].after_launch.data, Some(data));
+    }
+
+    #[test]
+    fn args_short_multi() {
+        let data = "pathandtext".to_string();
+        let mut cmd = example_cmd();
+        let mut input_stream = vec![data.clone()].into_iter();
+
+        cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
+            .unwrap();
+
+        assert_eq!(cmd.args[0].after_launch.data, Some(data.clone()));
+        assert_eq!(cmd.args[1].after_launch.data, Some(data.clone()));
+    }
+
+    #[test]
+    fn args_long() {
+        let data = "egdata".to_string();
+        let mut cmd = example_cmd();
+        let mut input_stream = vec![data.clone()].into_iter();
+
+        cmd.arg_flow(&mut input_stream, &mut vec![], "--append".to_string())
+            .unwrap();
+
+        assert_eq!(cmd.args[0].after_launch.data, Some(data));
     }
 
     #[test]
@@ -540,7 +542,34 @@ mod tests {
         ); // subcommand doesn't use partialeq so check HelpType
     }
 
-    // TODO: parse next
+    #[test]
+    fn raw_parsing() {
+        // equals `./program mine 21 -a "./path" water`
+        let stream = vec![
+            "mine".to_string(),
+            "21".to_string(),
+            "-a".to_string(),
+            "./path".to_string(),
+            "water".to_string(),
+        ];
+
+        // generate
+        let mut cmd = example_cmd();
+
+        // parse_next version
+        cmd.parse_next(&mut stream.clone().into_iter(), &mut vec![])
+            .unwrap();
+        assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
+        assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
+
+        // reset
+        cmd = example_cmd();
+
+        // launch_custom version
+        cmd.launch_custom(&mut stream.clone().into_iter()).unwrap();
+        assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
+        assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
+    }
 }
 
 // /// High-level builder for a new command-line-interface
