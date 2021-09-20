@@ -160,7 +160,7 @@ impl<'a> Command<'a> {
             todo!("data for self")
         } else {
             // unwanted data
-            todo!("unwanted data")
+            return Err(Error::CommandNotFound(call.clone()));
         }
 
         // TODO: check logic of above vs below
@@ -534,6 +534,8 @@ mod tests {
             HelpType::Path
         ); // subcommand doesn't use partialeq so check HelpType
     }
+
+    // TODO: parse next
 }
 
 // /// High-level builder for a new command-line-interface
