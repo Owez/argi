@@ -176,12 +176,13 @@ impl<'a> Command<'a> {
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
-        if left.starts_with("--") {
+        // FIXME: dont dupe `search_args_mut`, perhaps a closure is in order?
+        if let Some(instigator) = left.strip_prefix("--") {
             // gen for long arg
             push_data(
                 stream,
                 call,
-                self.search_args_mut(&left[2..])
+                self.search_args_mut(instigator)
                     .ok_or_else(|| Error::ArgumentNotFound(call.clone()))?,
             )?
         } else {
