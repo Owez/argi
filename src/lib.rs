@@ -8,13 +8,12 @@ mod error;
 pub use error::{Error, Result};
 
 use std::io::{self, Write};
-use std::process;
-use std::{env, fmt, str::FromStr};
+use std::{env, fmt, process, str::FromStr};
 
 /// Whitelisted overriding help targets
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum HelpType {
     None,
     Text,
@@ -153,9 +152,15 @@ impl<'a> Command<'a> {
         if left.starts_with("-") {
             // argument
             self.arg_flow(stream, call, left)?
-        } else {
+        } else if let Some(_cmd) = self.search_subcmds_mut(&left) {
             // subcommand
             todo!("subcommand")
+        } else if self.help_type != HelpType::None {
+            // data for self
+            todo!("data for self")
+        } else {
+            // unwanted data
+            todo!("unwanted data")
         }
 
         // TODO: check logic of above vs below
@@ -173,28 +178,44 @@ impl<'a> Command<'a> {
     ) -> Result<()> {
         if left.starts_with("--") {
             // gen for long arg
-            push_data(stream, call, self.search_args_mut(&call, &left[2..])?)?
+            push_data(
+                stream,
+                call,
+                self.search_args_mut(&left[2..])
+                    .ok_or(Error::ArgumentNotFound(call.clone()))?,
+            )?
         } else {
             // gen for short arg(s)
             for c in left[1..].chars() {
-                push_data(stream, call, self.search_args_mut(&call, &c.to_string())?)?
+                push_data(
+                    stream,
+                    call,
+                    self.search_args_mut(&c.to_string())
+                        .ok_or(Error::ArgumentNotFound(call.clone()))?,
+                )?
             }
         }
         Ok(())
     }
 
     /// Searches current instance for given argument by it's instigator
-    fn search_args_mut(
-        &mut self,
-        call: &Vec<String>,
-        instigator: &str,
-    ) -> Result<&mut Argument<'a>> {
+    fn search_args_mut(&mut self, instigator: &str) -> Option<&mut Argument<'a>> {
         for arg in self.args.iter_mut() {
             if arg.instigators.contains(&instigator) {
-                return Ok(arg);
+                return Some(arg);
             }
         }
-        Err(Error::ArgumentNotFound(call.clone()))
+        None
+    }
+
+    /// Searches current instance's subcommands for given name
+    fn search_subcmds_mut(&mut self, name: &str) -> Option<&mut Command<'a>> {
+        for subcmd in self.subcmds.iter_mut() {
+            if subcmd.name == name {
+                return Some(subcmd);
+            }
+        }
+        None
     }
 
     /// Writes full help message to buffer
@@ -379,7 +400,7 @@ mod tests {
             subcmds: vec![Command {
                 name: "water",
                 help: None.into(),
-                help_type: HelpType::None,
+                help_type: HelpType::Path,
                 args: vec![],
                 subcmds: vec![],
                 after_launch: AfterLaunch {
@@ -425,7 +446,7 @@ mod tests {
         lines.next();
         let res = lines.collect::<Vec<&str>>().join("\n");
 
-        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
+        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
     }
 
     // TODO: remaster
@@ -496,6 +517,22 @@ mod tests {
 
         assert_eq!(cmd.args[0].after_launch.data, Some(data))
         // TOOD: more thorough testing
+    }
+
+    #[test]
+    fn searching_args() {
+        let mut cmd = example_cmd();
+        assert_eq!(cmd.search_args_mut("a").unwrap().help_type, HelpType::Path);
+        // argument doesn't use partialeq so check HelpType
+    }
+
+    #[test]
+    fn searching_subcmds() {
+        let mut cmd = example_cmd();
+        assert_eq!(
+            cmd.search_subcmds_mut("water").unwrap().help_type,
+            HelpType::Path
+        ); // subcommand doesn't use partialeq so check HelpType
     }
 }
 
