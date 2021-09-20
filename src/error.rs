@@ -71,6 +71,6 @@ impl fmt::Display for Error {
     }
 }
 
-fn fmt_call(call: &Vec<String>) -> String {
+fn fmt_call(call: &[String]) -> String {
     call.join(" ") // TODO: cur exe here
 }

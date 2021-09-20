@@ -149,7 +149,7 @@ impl<'a> Command<'a> {
         };
         call.push(left.clone()); // add new left to call stream
 
-        if left.starts_with("-") {
+        if left.starts_with('-') {
             // argument
             self.arg_flow(stream, call, left)?
         } else if let Some(_cmd) = self.search_subcmds_mut(&left) {
@@ -163,7 +163,7 @@ impl<'a> Command<'a> {
             return Err(Error::CommandNotFound(call.clone()));
         }
 
-        // TODO: check logic of above vs below
+        // TODO: check logic of above vs belowf
 
         // recurse for arguments until stream end, all else is delt with via subcommand
         self.parse_next(stream, call)
@@ -182,7 +182,7 @@ impl<'a> Command<'a> {
                 stream,
                 call,
                 self.search_args_mut(&left[2..])
-                    .ok_or(Error::ArgumentNotFound(call.clone()))?,
+                    .ok_or_else(|| Error::ArgumentNotFound(call.clone()))?,
             )?
         } else {
             // gen for short arg(s)
@@ -191,7 +191,7 @@ impl<'a> Command<'a> {
                     stream,
                     call,
                     self.search_args_mut(&c.to_string())
-                        .ok_or(Error::ArgumentNotFound(call.clone()))?,
+                        .ok_or_else(|| Error::ArgumentNotFound(call.clone()))?,
                 )?
             }
         }
@@ -254,8 +254,8 @@ impl<'a> Command<'a> {
 
         let mut any = false;
 
-        if self.subcmds.len() != 0 {
-            buf.write(b"\n\nCommands:\n")?;
+        if !self.subcmds.is_empty() {
+            buf.write_all(b"\n\nCommands:\n")?;
             any = true;
 
             let lr = self
@@ -266,8 +266,8 @@ impl<'a> Command<'a> {
             tab_to(buf, lr)?;
         }
 
-        if self.args.len() != 0 {
-            buf.write(if any {
+        if !self.args.is_empty() {
+            buf.write_all(if any {
                 b"\nArguments:\n"
             } else {
                 b"\n\nArguments:\n"
@@ -283,7 +283,7 @@ impl<'a> Command<'a> {
         }
 
         if !any {
-            buf.write(b"\n\nOptions:\n  No commands or arguments found!")?;
+            buf.write_all(b"\n\nOptions:\n  No commands or arguments found!")?;
         }
 
         Ok(())
@@ -362,11 +362,15 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 /// via the [CommonInternal::apply_afters] implementation
 fn push_data<'a>(
     stream: &mut impl Iterator<Item = String>,
-    call: &Vec<String>,
+    call: &[String],
     item: &mut impl CommonInternal<'a>,
 ) -> Result<()> {
     if !item.no_data() {
-        item.apply_afters(stream.next().ok_or(Error::DataRequired(call.clone()))?)
+        item.apply_afters(
+            stream
+                .next()
+                .ok_or_else(|| Error::DataRequired(call.to_vec()))?,
+        )
     }
     Ok(())
 }
