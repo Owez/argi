@@ -120,10 +120,6 @@ pub struct Command<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn parse_into<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
-        T::from_str(self.after_launch.data.clone().unwrap().as_str())
-    }
-
     pub fn launch(&mut self) {
         const ERROR: &str = "\nError:\n  ";
         let mut stream = env::args();
@@ -349,12 +345,6 @@ pub struct Argument<'a> {
     after_launch: AfterLaunch,
 }
 
-impl<'a> Argument<'a> {
-    pub fn parse_into<T: FromStr>(&self) -> std::result::Result<T, <T as FromStr>::Err> {
-        T::from_str(self.after_launch.data.clone().unwrap().as_str())
-    }
-}
-
 impl<'a> CommonInternal<'a> for Argument<'a> {
     fn help_left(&self) -> String {
         let mut output = String::new();
@@ -469,38 +459,6 @@ mod tests {
     }
 
     #[test]
-    fn cmd_parse_into() {
-        const PATH: &str = "./src/lib.rs";
-        let cmd = Command {
-            name: "example",
-            help: None.into(),
-            help_type: HelpType::Text,
-            args: vec![],
-            subcmds: vec![],
-            after_launch: AfterLaunch {
-                data: Some(PATH.to_string()),
-                run: None,
-            },
-        };
-        assert_eq!(cmd.parse_into(), Ok(PathBuf::from(PATH)));
-    }
-
-    #[test]
-    fn arg_parse_into() {
-        const PATH: &str = "./src/lib.rs";
-        let arg = Argument {
-            instigators: &["a", "after"],
-            help: None.into(),
-            help_type: HelpType::Path,
-            after_launch: AfterLaunch {
-                data: Some(PATH.into()),
-                run: None,
-            },
-        };
-        assert_eq!(arg.parse_into(), Ok(PathBuf::from(PATH)))
-    }
-
-    #[test]
     fn args_short_basic() {
         let data = "egdata".to_string();
         let mut cmd = example_cmd();
@@ -585,26 +543,19 @@ mod tests {
     // TODO: more raw parsing tests
 }
 
-// /// High-level builder for a new command-line-interface
 // #[macro_export]
 // macro_rules! cli {
-
-// }
-// macro_rules! cli_inner {
-//     ( $name:tt ( => help: $help:tt, parses: $parses:ident, run: $run:expr, below: [ (cli_inner)* ] )? ) => {
-//         todo!()
-//     };
+//     ( $(help : $help:literal ,)? $(parses : $parses:ty ,)? $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)? ) => {};
 // }
 
-// cli!(help: "general cli help", "inner_stuff" => {help: "the inner stuff appears here"}, "--arg" => {run: |data| data.split(" ")})
-// cli_inner!(
-//     "command" => {
-//         help: "given help here",
-//         run: |data| data.destroy(),
-//         below: [
-//             "other" => {help: "mini help", run: |data| data},
-//             "-f --final" => {help: "another mini help"},
-//             "basic"
-//         ]
+// fn something() {
+//     cli! {
+//         help: "hello",
+//         parses: PathBuf,
+//         "-a", "-b" => {},
+//         "-a", "-b" => {
+//             help: "hello this"
+//         },
+//         "-a", "-b" => {},
 //     }
-// )
+// }
