@@ -13,6 +13,17 @@ use std::{env, fmt, process, str::FromStr};
 /// Whitelisted overriding help targets
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
 
+/// Gets file name current exe as a string
+pub(crate) fn get_cur_exe() -> Result<String> {
+    env::current_exe()
+        .map_err(|_| Error::InvalidCurExe)?
+        .file_name()
+        .ok_or(Error::InvalidCurExe)?
+        .to_os_string()
+        .into_string()
+        .map_err(|_| Error::InvalidCurExe) // :(
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HelpType {
     None,
@@ -156,9 +167,9 @@ impl<'a> Command<'a> {
         if left.starts_with('-') {
             // argument
             self.arg_flow(stream, call, left)?
-        } else if let Some(_cmd) = self.search_subcmds_mut(&left) {
+        } else if let Some(cmd) = self.search_subcmds_mut(&left) {
             // subcommand
-            todo!("subcommand")
+            cmd.parse_next(stream, call)?
         } else if self.help_type != HelpType::None {
             // data for self
             self.apply_afters(left)
@@ -227,15 +238,12 @@ impl<'a> Command<'a> {
     fn help(&self, buf: &mut impl Write) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
-        let exe_path = env::current_exe().map_err(|_| Error::InvalidCurExe)?;
-        let exe = exe_path
-            .file_name()
-            .ok_or(Error::InvalidCurExe)?
-            .to_str()
-            .ok_or(Error::InvalidCurExe)?;
         buf.write_fmt(format_args!(
             "Usage: {}{}{} [options]\n\n  {}",
-            exe, self.name, self.help_type, self.help
+            get_cur_exe()?,
+            self.name,
+            self.help_type,
+            self.help
         ))?;
 
         /// Automatically pads left and right hand side of help messages together
@@ -570,6 +578,8 @@ mod tests {
         assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
         assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
     }
+
+    // TODO: more raw parsing tests
 }
 
 // /// High-level builder for a new command-line-interface

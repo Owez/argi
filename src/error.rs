@@ -1,5 +1,6 @@
 //! Constructs for reporting errors within this library
 
+use crate::get_cur_exe;
 use std::{fmt, io};
 
 /// Crate-specific result type for ease-of-use
@@ -72,5 +73,9 @@ impl fmt::Display for Error {
 }
 
 fn fmt_call(call: &[String]) -> String {
-    call.join(" ") // TODO: cur exe here
+    let left = match get_cur_exe() {
+        Ok(cur_exe) => cur_exe,
+        Err(_) => String::new(),
+    };
+    format!("{}{}", left, call.join(" "))
 }
