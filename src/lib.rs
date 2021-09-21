@@ -8,6 +8,7 @@ mod error;
 pub use error::{Error, Result};
 
 use std::io::{self, Write};
+use std::iter::Peekable;
 use std::{env, fmt, process, str::FromStr};
 
 /// Whitelisted overriding help targets
@@ -21,7 +22,7 @@ pub(crate) fn get_cur_exe() -> Result<String> {
         .ok_or(Error::InvalidCurExe)?
         .to_os_string()
         .into_string()
-        .map_err(|_| Error::InvalidCurExe) // :(
+        .map_err(|_| Error::InvalidCurExe) // TODO: `./` if on unix-like?
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -124,8 +125,10 @@ impl<'a> Command<'a> {
     }
 
     pub fn launch(&mut self) {
-        const ERROR: &str = "Error: ";
-        match self.parse_next(&mut env::args(), &mut vec![]) {
+        const ERROR: &str = "\nError:\n  ";
+        let mut stream = env::args();
+        stream.next();
+        match self.parse_next(&mut stream.peekable(), &mut vec![]) {
             Ok(()) => (),
             Err(err) => {
                 // help
@@ -143,14 +146,17 @@ impl<'a> Command<'a> {
         }
     }
 
-    pub fn launch_custom(&mut self, input_args: &mut impl Iterator<Item = String>) -> Result<()> {
+    pub fn launch_custom(
+        &mut self,
+        input_args: &mut Peekable<impl Iterator<Item = String>>,
+    ) -> Result<()> {
         self.parse_next(input_args, &mut vec![])
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
     fn parse_next(
         &mut self,
-        stream: &mut impl Iterator<Item = String>,
+        stream: &mut Peekable<impl Iterator<Item = String>>,
         call: &mut Vec<String>,
     ) -> Result<()> {
         // TODO: recurse
@@ -175,7 +181,7 @@ impl<'a> Command<'a> {
             self.apply_afters(left)
         } else {
             // unwanted data
-            return Err(Error::CommandNotFound(call.clone()));
+            return Err(Error::CommandNotFound((left, call.clone())));
         }
 
         // TODO: check logic of above vs belowf
@@ -187,41 +193,55 @@ impl<'a> Command<'a> {
     /// Pathway for arguments which automatically adds data to arguments if found in current instance
     fn arg_flow(
         &mut self,
-        stream: &mut impl Iterator<Item = String>,
+        stream: &mut Peekable<impl Iterator<Item = String>>,
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
-        // FIXME: dont dupe `search_args_mut`, perhaps a closure is in order?
-        if let Some(instigator) = left.strip_prefix("--") {
-            // gen for long arg
-            push_data(
-                stream,
-                call,
-                self.search_args_mut(instigator)
-                    .ok_or_else(|| Error::ArgumentNotFound(call.clone()))?,
-            )?
+        let instigator_fmt = if let Some(instigator) = left.strip_prefix("--") {
+            vec![instigator.to_string()]
         } else {
-            // gen for short arg(s)
-            for c in left[1..].chars() {
-                push_data(
-                    stream,
-                    call,
-                    self.search_args_mut(&c.to_string())
-                        .ok_or_else(|| Error::ArgumentNotFound(call.clone()))?,
-                )?
-            }
-        }
-        Ok(())
-    }
+            left[1..]
+                .chars()
+                .into_iter()
+                .map(|c| c.to_string())
+                .collect()
+        };
 
-    /// Searches current instance for given argument by it's instigator
-    fn search_args_mut(&mut self, instigator: &str) -> Option<&mut Argument<'a>> {
-        for arg in self.args.iter_mut() {
-            if arg.instigators.contains(&instigator) {
-                return Some(arg);
+        for instigator in instigator_fmt {
+            let instigator_str = instigator.as_str();
+
+            // validation and help
+            let mut found = false;
+            for arg in self.args.iter() {
+                if arg.instigators.contains(&instigator_str) {
+                    found = true;
+                    match stream.peek() {
+                        Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
+                            stream.next();
+                            self.help(&mut io::stdout())?;
+                            return Ok(());
+                        }
+                        _ => continue,
+                    }
+                }
+            }
+            if !found {
+                return Err(Error::ArgumentNotFound((instigator, call.clone())));
+            }
+
+            // mutable data application, due to rust
+            for arg in self.args.iter_mut() {
+                if arg.instigators.contains(&instigator_str) {
+                    arg.apply_afters(
+                        stream
+                            .next()
+                            .ok_or_else(|| Error::DataRequired(call.clone()))?,
+                    )
+                }
             }
         }
-        None
+
+        Ok(())
     }
 
     /// Searches current instance's subcommands for given name
@@ -239,7 +259,7 @@ impl<'a> Command<'a> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         buf.write_fmt(format_args!(
-            "Usage: {}{}{} [options]\n\n  {}",
+            "Usage: {} {}{} [options]\n\n  {}",
             get_cur_exe()?,
             self.name,
             self.help_type,
@@ -368,23 +388,6 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
         }
         self.after_launch.data = Some(data);
     }
-}
-
-/// If there is no help data intended, ensure there is data and then apply it
-/// via the [CommonInternal::apply_afters] implementation
-fn push_data<'a>(
-    stream: &mut impl Iterator<Item = String>,
-    call: &[String],
-    item: &mut impl CommonInternal<'a>,
-) -> Result<()> {
-    if !item.no_data() {
-        item.apply_afters(
-            stream
-                .next()
-                .ok_or_else(|| Error::DataRequired(call.to_vec()))?,
-        )
-    }
-    Ok(())
 }
 
 #[cfg(test)]

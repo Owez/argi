@@ -22,9 +22,9 @@ pub enum Error {
     /// No commands where provided at all
     NoCommandsProvided,
     /// Command name provided could not be found
-    CommandNotFound(Vec<String>),
+    CommandNotFound((String, Vec<String>)),
     /// Argument name provided could not be found
-    ArgumentNotFound(Vec<String>),
+    ArgumentNotFound((String, Vec<String>)),
 }
 
 impl From<io::Error> for Error {
@@ -54,21 +54,34 @@ impl fmt::Display for Error {
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),
             Error::NoCommandsProvided => write!(f, "No commands where provided"),
-            Error::CommandNotFound(call) => {
+            Error::CommandNotFound((cmd, call)) => {
                 write!(
                     f,
-                    "Command '{}' provided could not be found",
+                    "Command `{}` not recognized, found inside of `{}` program call",
+                    cmd,
                     fmt_call(call)
                 )
             }
-            Error::ArgumentNotFound(call) => {
+            Error::ArgumentNotFound((arg, call)) => {
                 write!(
                     f,
-                    "Command '{}' provided could not be found",
+                    "Argument {}{} not recognized, found inside of `{}` program call",
+                    arg_dashes(arg.len()),
+                    arg,
                     fmt_call(call)
                 )
             }
         }
+    }
+}
+
+/// Formats dashes onto arguments, used instead of directly supplying original
+/// so `-abc` can be formatted down into `-b` potentially
+fn arg_dashes(arg_len: usize) -> &'static str {
+    if arg_len < 2 {
+        "-"
+    } else {
+        "--"
     }
 }
 
@@ -77,5 +90,5 @@ fn fmt_call(call: &[String]) -> String {
         Ok(cur_exe) => cur_exe,
         Err(_) => String::new(),
     };
-    format!("{}{}", left, call.join(" "))
+    format!("{} {}", left, call.join(" "))
 }
