@@ -380,10 +380,53 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
     }
 }
 
+#[macro_export]
+macro_rules! cli {
+    () => {
+        Command {
+            name: "",
+            help: Help::default(),
+            help_type: HelpType::None,
+            args: vec![],
+            subcmds: vec![],
+            after_launch: AfterLaunch::default(),
+        }
+    };
+    ($($tail:tt)*) => { cli_below!(cli!(); $($tail)*) };
+}
+
+#[allow(unused_macros)] // rust analyser workaround
+macro_rules! cli_below {
+    // recursion-only
+    ($cmd:expr; $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
+    // meta-only
+    ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
+    ($cmd:expr; parses: $parses:ty) => { todo!("cmd parses") };
+    ($cmd:expr; help: $help:literal, parses: $parses:ty) => {
+        cli_below!($cmd; help: $help);
+        cli_below!($cmd; parses: $parses);
+    };
+    ($cmd:expr; parses: $parses:ty, help: $help:literal) => { cli_below!($cmd; help: $help, parses: $parses) };
+    // mixed
+    ($cmd:expr; help: $help:literal, $($further:tt)*) => {
+        cli_below!($cmd; help: $help);
+        cli_below!($cmd; $($further)*);
+    };
+    ($cmd:expr; parses: $parses:ty, $($further:tt)*) => {
+        cli_below!($cmd; parses: $parses);
+        cli_below!($cmd; $($further)*);
+    };
+    ($cmd:expr; help: $help:literal, parses: $parses:ty, $($further:tt)*) => {
+        cli_below!($cmd; help: $help, parses: $parses);
+        cli_below!($cmd; $($further)*);
+    };
+    ($cmd:expr; parses: $parses:ty, help: $help:literal, $($further:tt)*) => { cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{path::PathBuf, str};
+    use std::str;
 
     const ID_STRING: &str = "AAAAAA";
 
@@ -462,7 +505,7 @@ mod tests {
     fn args_short_basic() {
         let data = "egdata".to_string();
         let mut cmd = example_cmd();
-        let mut input_stream = vec![data.clone()].into_iter();
+        let mut input_stream = vec![data.clone()].into_iter().peekable();
 
         cmd.arg_flow(&mut input_stream, &mut vec![], "-a".to_string())
             .unwrap();
@@ -474,7 +517,7 @@ mod tests {
     fn args_short_multi() {
         let data = "pathandtext".to_string();
         let mut cmd = example_cmd();
-        let mut input_stream = vec![data.clone()].into_iter();
+        let mut input_stream = vec![data.clone()].into_iter().peekable();
 
         cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
             .unwrap();
@@ -487,19 +530,12 @@ mod tests {
     fn args_long() {
         let data = "egdata".to_string();
         let mut cmd = example_cmd();
-        let mut input_stream = vec![data.clone()].into_iter();
+        let mut input_stream = vec![data.clone()].into_iter().peekable();
 
         cmd.arg_flow(&mut input_stream, &mut vec![], "--append".to_string())
             .unwrap();
 
         assert_eq!(cmd.args[0].after_launch.data, Some(data));
-    }
-
-    #[test]
-    fn searching_args() {
-        let mut cmd = example_cmd();
-        assert_eq!(cmd.search_args_mut("a").unwrap().help_type, HelpType::Path);
-        // argument doesn't use partialeq so check HelpType
     }
 
     #[test]
@@ -526,7 +562,7 @@ mod tests {
         let mut cmd = example_cmd();
 
         // parse_next version
-        cmd.parse_next(&mut stream.clone().into_iter(), &mut vec![])
+        cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
             .unwrap();
         assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
         assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
@@ -535,27 +571,30 @@ mod tests {
         cmd = example_cmd();
 
         // launch_custom version
-        cmd.launch_custom(&mut stream.clone().into_iter()).unwrap();
+        cmd.launch_custom(&mut stream.clone().into_iter().peekable())
+            .unwrap();
         assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
         assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
     }
 
+    #[test]
+    fn cli_macro_syntax() {
+        cli!();
+        cli!(help: "hi");
+        cli!(parses: PathBuf);
+        cli!(help: "hi", parses: PathBuf);
+        cli!(parses: PathBuf, help: "hi");
+        cli_below!(cli!(); help: "hi");
+        cli! {
+            help: "hello",
+            parses: PathBuf,
+            "-a", "-b" => {},
+            "-a", "-b" => {
+                help: "hello this"
+            },
+            "-a", "-b" => {},
+        }
+    }
+
     // TODO: more raw parsing tests
 }
-
-// #[macro_export]
-// macro_rules! cli {
-//     ( $(help : $help:literal ,)? $(parses : $parses:ty ,)? $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)? ) => {};
-// }
-
-// fn something() {
-//     cli! {
-//         help: "hello",
-//         parses: PathBuf,
-//         "-a", "-b" => {},
-//         "-a", "-b" => {
-//             help: "hello this"
-//         },
-//         "-a", "-b" => {},
-//     }
-// }
