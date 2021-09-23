@@ -9,7 +9,7 @@ pub use error::{Error, Result};
 
 use std::io::{self, Write};
 use std::iter::Peekable;
-use std::{env, fmt, process, str::FromStr};
+use std::{env, fmt, process};
 
 /// Whitelisted overriding help targets
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
@@ -403,11 +403,25 @@ macro_rules! cli_below {
     // meta-only help
     ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
     // meta-only parses
+    ($cmd:expr; parses: none) => { $cmd.help_type = HelpType::None };
+    ($cmd:expr; parses: text) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: path) => { $cmd.help_type = HelpType::Path };
+    ($cmd:expr; parses: $parses:literal) => {
+        {
+            // NOTE: you can't test errors without using the compiletest_rs crate
+            match $parses  {
+                "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
+                "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
+                "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
+                _ => $cmd.help_type = HelpType::Custom($parses)
+            }
+        }
+    };
     ($cmd:expr; parses: None) => { $cmd.help_type = HelpType::None };
     ($cmd:expr; parses: $(&)*str) => { $cmd.help_type = HelpType::Text };
     ($cmd:expr; parses: $(&)*String) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: std::path::Path) => { $cmd.help_type = HelpType::Path };
     ($cmd:expr; parses: PathBuf) => { $cmd.help_type = HelpType::Path };
-    ($cmd:expr; parses: $parses:literal) => { $cmd.help_type = HelpType::Custom($parses) };
     // TODO: more
     // TODO: figure out run going into parses
     // meta-only mixed
