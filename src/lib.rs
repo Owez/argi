@@ -392,10 +392,11 @@ macro_rules! cli {
             after_launch: AfterLaunch::default(),
         }
     };
-    ($($tail:tt)*) => { cli_below!(cli!(); $($tail)*) };
+    ($($tail:tt)*) => { $crate::cli_below!(cli!(); $($tail)*) };
 }
 
-#[allow(unused_macros)] // rust analyser workaround
+#[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
+#[macro_export]
 macro_rules! cli_below {
     // recursion-only
     ($cmd:expr; $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
