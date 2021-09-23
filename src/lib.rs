@@ -399,28 +399,36 @@ macro_rules! cli {
 macro_rules! cli_below {
     // recursion-only
     ($cmd:expr; $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
-    // meta-only
+    // meta-only help
     ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
-    ($cmd:expr; parses: $parses:ty) => { todo!("cmd parses") };
-    ($cmd:expr; help: $help:literal, parses: $parses:ty) => {
+    // meta-only parses
+    ($cmd:expr; parses: None) => { $cmd.help_type = HelpType::None };
+    ($cmd:expr; parses: $(&)*str) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: $(&)*String) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: PathBuf) => { $cmd.help_type = HelpType::Path };
+    ($cmd:expr; parses: $parses:literal) => { $cmd.help_type = HelpType::Custom($parses) };
+    // TODO: more
+    // TODO: figure out run going into parses
+    // meta-only mixed
+    ($cmd:expr; help: $help:literal, parses: $parses:tt) => {
         cli_below!($cmd; help: $help);
         cli_below!($cmd; parses: $parses);
     };
-    ($cmd:expr; parses: $parses:ty, help: $help:literal) => { cli_below!($cmd; help: $help, parses: $parses) };
+    ($cmd:expr; parses: $parses:tt, help: $help:literal) => { cli_below!($cmd; help: $help, parses: $parses) };
     // mixed
     ($cmd:expr; help: $help:literal, $($further:tt)*) => {
         cli_below!($cmd; help: $help);
         cli_below!($cmd; $($further)*);
     };
-    ($cmd:expr; parses: $parses:ty, $($further:tt)*) => {
+    ($cmd:expr; parses: $parses:tt, $($further:tt)*) => {
         cli_below!($cmd; parses: $parses);
         cli_below!($cmd; $($further)*);
     };
-    ($cmd:expr; help: $help:literal, parses: $parses:ty, $($further:tt)*) => {
+    ($cmd:expr; help: $help:literal, parses: $parses:tt, $($further:tt)*) => {
         cli_below!($cmd; help: $help, parses: $parses);
         cli_below!($cmd; $($further)*);
     };
-    ($cmd:expr; parses: $parses:ty, help: $help:literal, $($further:tt)*) => { cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
+    ($cmd:expr; parses: $parses:tt, help: $help:literal, $($further:tt)*) => { cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
 }
 
 #[cfg(test)]
@@ -580,12 +588,12 @@ mod tests {
 
     #[test]
     fn cli_macro_syntax() {
+        cli_below!(cli!(); help: "hi");
         cli!();
         cli!(help: "hi");
         cli!(parses: PathBuf);
         cli!(help: "hi", parses: PathBuf);
         cli!(parses: PathBuf, help: "hi");
-        cli_below!(cli!(); help: "hi");
         cli! {
             help: "hello",
             parses: PathBuf,
