@@ -418,8 +418,8 @@ macro_rules! cli_below {
         }
     };
     ($cmd:expr; parses: None) => { $cmd.help_type = HelpType::None };
-    ($cmd:expr; parses: $(&)*str) => { $cmd.help_type = HelpType::Text };
-    ($cmd:expr; parses: $(&)*String) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: $(&)?str) => { $cmd.help_type = HelpType::Text };
+    ($cmd:expr; parses: String) => { $cmd.help_type = HelpType::Text };
     ($cmd:expr; parses: std::path::Path) => { $cmd.help_type = HelpType::Path };
     ($cmd:expr; parses: PathBuf) => { $cmd.help_type = HelpType::Path };
     // TODO: more
