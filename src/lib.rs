@@ -120,11 +120,24 @@ pub struct Command<'a> {
 }
 
 impl<'a> Command<'a> {
+    /// Creates a new command for the "root", hidden from docs as this should be only accessed via macros
+    #[doc(hidden)]
+    pub fn new_root() -> Self {
+        Self {
+            name: "",
+            help: Help::default(),
+            help_type: HelpType::None,
+            args: vec![],
+            subcmds: vec![],
+            after_launch: AfterLaunch::default(),
+        }
+    }
+
     pub fn launch(&mut self) {
         const ERROR: &str = "\nError:\n  ";
         let mut stream = env::args();
         stream.next();
-        match self.parse_next(&mut stream.peekable(), &mut vec![]) {
+        match self.launch_custom(&mut stream.peekable()) {
             Ok(()) => (),
             Err(err) => {
                 // help
@@ -136,7 +149,7 @@ impl<'a> Command<'a> {
                 }
 
                 // print error
-                eprintln!("{}{}", ERROR, err);
+                eprintln!("{}{}!", ERROR, err);
                 process::exit(1)
             }
         }
@@ -146,7 +159,11 @@ impl<'a> Command<'a> {
         &mut self,
         input_args: &mut Peekable<impl Iterator<Item = String>>,
     ) -> Result<()> {
-        self.parse_next(input_args, &mut vec![])
+        if self.no_data() && input_args.peek().is_none() {
+            Err(Error::NoCommandsProvided)
+        } else {
+            self.parse_next(input_args, &mut vec![])
+        }
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
@@ -180,7 +197,7 @@ impl<'a> Command<'a> {
             return Err(Error::CommandNotFound((left, call.clone())));
         }
 
-        // TODO: check logic of above vs belowf
+        // TODO: check logic of above vs below
 
         // recurse for arguments until stream end, all else is delt with via subcommand
         self.parse_next(stream, call)
@@ -255,7 +272,7 @@ impl<'a> Command<'a> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         buf.write_fmt(format_args!(
-            "Usage: {} {}{} [options]\n\n  {}",
+            "Usage: {} {}{}[OPTIONS]\n\n  {}",
             get_cur_exe()?,
             self.name,
             self.help_type,
@@ -311,7 +328,7 @@ impl<'a> Command<'a> {
         }
 
         if !any {
-            buf.write_all(b"\n\nOptions:\n  No commands or arguments found!")?;
+            buf.write_all(b"\n\nOptions:\n  No commands or arguments found\n")?;
         }
 
         Ok(())
@@ -382,30 +399,27 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
 #[macro_export]
 macro_rules! cli {
-    () => {
-        Command {
-            name: "",
-            help: Help::default(),
-            help_type: HelpType::None,
-            args: vec![],
-            subcmds: vec![],
-            after_launch: AfterLaunch::default(),
+    () => { $crate::Command::new_root() };
+    ($($tail:tt)*) => {
+        {
+            let mut cli = $crate::cli!();
+            $crate::cli_below!(cli; $($tail)*);
+            cli
         }
-    };
-    ($($tail:tt)*) => { $crate::cli_below!(cli!(); $($tail)*) };
+     };
 }
 
 #[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
 #[macro_export]
 macro_rules! cli_below {
     // recursion-only
-    ($cmd:expr; $($($left:literal),* $(,)? => { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
+    ($cmd:expr; $($($left:literal),* $(,)? $(:)? { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
     // meta-only help
     ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
     // meta-only parses
-    ($cmd:expr; parses: none) => { $cmd.help_type = HelpType::None };
-    ($cmd:expr; parses: text) => { $cmd.help_type = HelpType::Text };
-    ($cmd:expr; parses: path) => { $cmd.help_type = HelpType::Path };
+    ($cmd:expr; parses: none) => { $cmd.help_type = $crate::HelpType::None };
+    ($cmd:expr; parses: text) => { $cmd.help_type = $crate::HelpType::Text };
+    ($cmd:expr; parses: path) => { $cmd.help_type = $crate::HelpType::Path };
     ($cmd:expr; parses: $parses:literal) => {
         {
             // NOTE: you can't test errors without using the compiletest_rs crate
@@ -413,37 +427,37 @@ macro_rules! cli_below {
                 "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
                 "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
                 "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
-                _ => $cmd.help_type = HelpType::Custom($parses)
+                _ => $cmd.help_type = $crate::HelpType::Custom($parses)
             }
         }
     };
-    ($cmd:expr; parses: None) => { $cmd.help_type = HelpType::None };
-    ($cmd:expr; parses: $(&)?str) => { $cmd.help_type = HelpType::Text };
-    ($cmd:expr; parses: String) => { $cmd.help_type = HelpType::Text };
-    ($cmd:expr; parses: std::path::Path) => { $cmd.help_type = HelpType::Path };
-    ($cmd:expr; parses: PathBuf) => { $cmd.help_type = HelpType::Path };
+    ($cmd:expr; parses: None) => { $cmd.help_type = $crate::HelpType::None };
+    ($cmd:expr; parses: $(&)?str) => { $cmd.help_type = $crate::HelpType::Text };
+    ($cmd:expr; parses: String) => { $cmd.help_type = $crate::HelpType::Text };
+    ($cmd:expr; parses: std::path::Path) => { $cmd.help_type = $crate::HelpType::Path };
+    ($cmd:expr; parses: PathBuf) => { $cmd.help_type = $crate::HelpType::Path };
     // TODO: more
     // TODO: figure out run going into parses
     // meta-only mixed
     ($cmd:expr; help: $help:literal, parses: $parses:tt) => {
-        cli_below!($cmd; help: $help);
-        cli_below!($cmd; parses: $parses);
+        $crate::cli_below!($cmd; help: $help);
+        $crate::cli_below!($cmd; parses: $parses);
     };
-    ($cmd:expr; parses: $parses:tt, help: $help:literal) => { cli_below!($cmd; help: $help, parses: $parses) };
+    ($cmd:expr; parses: $parses:tt, help: $help:literal) => { $crate::cli_below!($cmd; help: $help, parses: $parses) };
     // mixed
     ($cmd:expr; help: $help:literal, $($further:tt)*) => {
-        cli_below!($cmd; help: $help);
-        cli_below!($cmd; $($further)*);
+        $crate::cli_below!($cmd; help: $help);
+        $crate::cli_below!($cmd; $($further)*);
     };
     ($cmd:expr; parses: $parses:tt, $($further:tt)*) => {
-        cli_below!($cmd; parses: $parses);
-        cli_below!($cmd; $($further)*);
+        $crate::cli_below!($cmd; parses: $parses);
+        $crate::cli_below!($cmd; $($further)*);
     };
     ($cmd:expr; help: $help:literal, parses: $parses:tt, $($further:tt)*) => {
-        cli_below!($cmd; help: $help, parses: $parses);
-        cli_below!($cmd; $($further)*);
+        $crate::cli_below!($cmd; help: $help, parses: $parses);
+        $crate::cli_below!($cmd; $($further)*);
     };
-    ($cmd:expr; parses: $parses:tt, help: $help:literal, $($further:tt)*) => { cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
+    ($cmd:expr; parses: $parses:tt, help: $help:literal, $($further:tt)*) => { $crate::cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
 }
 
 #[cfg(test)]
@@ -612,11 +626,11 @@ mod tests {
         cli! {
             help: "hello",
             parses: PathBuf,
-            "-a", "-b" => {},
-            "-a", "-b" => {
+            "-a", "-b" {},
+            "-a", "-b" {
                 help: "hello this"
             },
-            "-a", "-b" => {},
+            "-a", "-b" {},
         }
     }
 
