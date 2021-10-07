@@ -409,11 +409,47 @@ macro_rules! cli {
      };
 }
 
+// TODO: uniform tt munching, not half tt and half brute-force
 #[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
 #[macro_export]
 macro_rules! cli_below {
     // recursion-only
-    ($cmd:expr; $($($left:literal),* $(,)? $(:)? { $($tail:tt)* }),* $(,)?) => { todo!("recursive commands/args") };
+    ($cmd:expr; $($($left:literal),* $(,)? $(:)? { $($tail:tt)* }),* $(,)?) => {
+        enum Detected<'a> {
+            Command($crate::Command<'a>),
+            Argument($crate::Argument<'a>)
+        }
+
+        $(
+            let detected =None;
+            $(
+                if $left.starts_with("-") {
+                    match detected {
+                        Some(Detected::Command(_)) => todo!("expected cmd error"),
+                        _ => ()
+                    }
+
+                    if $left.starts_with("--") {
+                        todo!("new long arg")
+                    } else {
+                        todo!("new short arg")
+                    }
+                } else {
+                    match detected {
+                        Some(Detected::Argument(_)) => todo!("expected arg error"),
+                        _ => ()
+                    }
+
+                    todo!("new subcommand")
+                }
+            )*
+
+            match detected.unwrap() {
+                Detected::Command(_subcmd) => todo!("command"),
+                Detected::Argument(_arg) => todo!("argument"),
+            }
+        )*
+     };  // TODO: optimise, remove
     // meta-only help
     ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
     // meta-only parses
