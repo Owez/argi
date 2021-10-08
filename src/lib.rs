@@ -429,7 +429,8 @@ macro_rules! cli_below {
     ($wu:expr; $(,)? parses: $parses:literal $($tail:tt)* ) => {
         {        
             // NOTE: you can't test errors without using the compiletest_rs crate
-            match $parses  {
+            // FIXME: reformat with issue #7 <https://github.com/Owez/argi/issues/7>
+            match $parses {
                 "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
                 "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
                 "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
