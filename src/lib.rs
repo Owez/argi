@@ -14,14 +14,16 @@ use std::{env, fmt, iter::Peekable, process};
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
 
 /// Gets file name current exe as a string
-pub(crate) fn get_cur_exe() -> Result<String> {
-    env::current_exe()
+pub(crate) fn get_cur_exe<'a>() -> Result<String> {
+    Ok(env::current_exe()
         .map_err(|_| Error::InvalidCurExe)?
         .file_name()
         .ok_or(Error::InvalidCurExe)?
         .to_os_string()
         .into_string()
-        .map_err(|_| Error::InvalidCurExe) // TODO: `./` if on unix-like?
+        .map_err(|_| Error::InvalidCurExe)?
+        .trim()
+        .to_string()) // TODO: `./` if on unix-like?
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,11 +45,11 @@ impl Default for HelpType {
 impl fmt::Display for HelpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HelpType::None => write!(f, " "),
-            HelpType::Text => write!(f, "[text] "),
-            HelpType::Number => write!(f, "[number] "),
-            HelpType::Path => write!(f, "[path] "),
-            HelpType::Custom(val) => write!(f, "[{}] ", val.to_lowercase()),
+            HelpType::None => Ok(()),
+            HelpType::Text => write!(f, "[text]"),
+            HelpType::Number => write!(f, "[number]"),
+            HelpType::Path => write!(f, "[path]"),
+            HelpType::Custom(val) => write!(f, "[{}]", val.to_lowercase()),
         }
     }
 }
@@ -249,7 +251,7 @@ impl<'a> Command<'a> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         buf.write_fmt(format_args!(
-            "Usage: {} {}{}[OPTIONS]\n\n  {}",
+            "Usage: {} {}{} [OPTIONS]\n\n  {}",
             get_cur_exe()?,
             self.name,
             self.help_type,
@@ -315,6 +317,7 @@ impl<'a> Command<'a> {
 impl<'a> CommonInternal<'a> for Command<'a> {
     fn help_left(&self) -> String {
         let mut output = self.name.to_string();
+        output.push(' ');
         output.push_str(&self.help_type.to_string());
         output
     }
@@ -362,6 +365,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
         fmtd.extend(long.iter().map(|l| format!("--{}", l)));
 
         output.push_str(fmtd.join(" ").as_str());
+        output.push(' ');
         output.push_str(&self.help_type.to_string());
         output
     }
