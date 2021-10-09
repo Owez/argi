@@ -53,13 +53,8 @@ impl fmt::Display for HelpType {
 }
 
 /// Help message to display to the user
+#[derive(Default)]
 pub struct Help<'a>(Option<&'a str>);
-
-impl<'a> Default for Help<'a> {
-    fn default() -> Self {
-        Self(None)
-    }
-}
 
 impl<'a> From<Option<&'a str>> for Help<'a> {
     fn from(opt_string: Option<&'a str>) -> Self {
@@ -94,20 +89,12 @@ trait CommonInternal<'a> {
 
 /// Contains common elements to both commands and arguments which can be used after launch to provide context; used via macros and automation
 #[doc(hidden)]
+#[derive(Default)]
 pub struct AfterLaunch {
     /// Raw data found from parsing, if found
     data: Option<String>,
     /// User-implemented closure which is ran at parse-time, if found
     run: Option<Box<dyn FnMut(Option<&str>)>>,
-}
-
-impl<'a> Default for AfterLaunch {
-    fn default() -> Self {
-        Self {
-            data: None,
-            run: None,
-        }
-    }
 }
 
 pub struct Command<'a> {
