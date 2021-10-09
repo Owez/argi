@@ -103,6 +103,7 @@ pub struct Command<'a> {
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
+    pub used: bool,
     /// Internal usage options and user implementations
     #[doc(hidden)]
     pub after_launch: AfterLaunch,
@@ -324,6 +325,7 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     }
 
     fn apply_afters(&mut self, data: String) {
+        self.used = true;
         if let Some(run) = &mut self.after_launch.run {
             run(Some(&data))
         }
@@ -335,6 +337,7 @@ pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
     pub help_type: HelpType,
+    pub used: bool,
     /// Internal usage options and user implementations
     #[doc(hidden)]
     pub after_launch: AfterLaunch,
@@ -368,6 +371,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
     }
 
     fn apply_afters(&mut self, data: String) {
+        self.used = true;
         if let Some(run) = &mut self.after_launch.run {
             run(Some(&data))
         }
@@ -383,6 +387,7 @@ macro_rules! cli {
         help_type: $crate::HelpType::None,
         args: vec![],
         subcmds: vec![],
+        used: false,
         after_launch: $crate::AfterLaunch::default(),
     } };
     ($($tail:tt)*) => {
@@ -435,6 +440,7 @@ macro_rules! cli_below {
                 instigators,
                 help: $crate::Help::default(),
                 help_type: $crate::HelpType::default(),
+                used: false,
                 after_launch: $crate::AfterLaunch::default()
             };
 
@@ -452,6 +458,7 @@ macro_rules! cli_below {
                 help_type: $crate::HelpType::default(),
                 args: vec![],
                 subcmds: vec![],
+                used: false,
                 after_launch: $crate::AfterLaunch::default()
             };
 
@@ -513,12 +520,14 @@ mod tests {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
                     help_type: HelpType::Path,
+                    used: false,
                     after_launch: AfterLaunch::default(), // TODO: after launch to ensure working with "args_basic" test
                 },
                 Argument {
                     instigators: &["z", "zeta"],
                     help: "Simple help".into(),
                     help_type: HelpType::Text,
+                    used: false,
                     after_launch: AfterLaunch::default(),
                 },
             ],
@@ -528,11 +537,13 @@ mod tests {
                 help_type: HelpType::Path,
                 args: vec![],
                 subcmds: vec![],
+                used: false,
                 after_launch: AfterLaunch {
                     data: None,
                     run: Some(Box::new(|_| println!("{}", ID_STRING))),
                 },
             }],
+            used: false,
             after_launch: AfterLaunch::default(),
         }
     }
@@ -545,6 +556,7 @@ mod tests {
             help_type: HelpType::Number,
             args: vec![],
             subcmds: vec![],
+            used: false,
             after_launch: AfterLaunch::default(),
         };
         assert_eq!(cmd.help_left(), "mine [number]".to_string());
@@ -556,6 +568,7 @@ mod tests {
             instigators: &["a", "b", "append"],
             help: None.into(),
             help_type: HelpType::Path,
+            used: false,
             after_launch: AfterLaunch::default(),
         };
         assert_eq!(arg.help_left(), "-a -b --append [path]".to_string())
@@ -634,12 +647,14 @@ mod tests {
 
         // generate
         let mut cmd = example_cmd();
+        assert!(!cmd.args[0].used); // -a isnt used?
 
         // parse_next version
         cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
             .unwrap();
         assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
         assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
+        assert!(cmd.args[0].used); // -a is used?
 
         // reset
         cmd = example_cmd();
