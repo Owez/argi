@@ -260,6 +260,8 @@ impl<'a> Command<'a> {
 
         /// Automatically pads left and right hand side of help messages together
         fn tab_to<'a>(buf: &mut impl Write, lr: Vec<(String, &Help<'a>)>) -> Result<()> {
+            const TAB_SPACE: &str = "    ";
+
             let mut max = 0;
             for (l, _) in lr.iter() {
                 let l_len = l.len();
@@ -270,7 +272,7 @@ impl<'a> Command<'a> {
 
             for (l, r) in lr {
                 let padding = " ".repeat(max - l.len());
-                buf.write_fmt(format_args!("  {}{}   {}\n", l, padding, r))?;
+                buf.write_fmt(format_args!("  {}{}{}{}\n", l, padding, TAB_SPACE, r))?;
             }
 
             Ok(())
@@ -592,7 +594,7 @@ mod tests {
         lines.next();
         let res = lines.collect::<Vec<&str>>().join("\n");
 
-        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]   No help provided\n\nArguments:\n  -a -b --append [path]   No help provided\n  -z --zeta [text]        Simple help".to_string())
+        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]    No help provided\n\nArguments:\n  -a -b --append [path]    No help provided\n  -z --zeta [text]         Simple help".to_string())
     }
 
     #[test]
