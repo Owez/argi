@@ -44,9 +44,9 @@ impl fmt::Display for HelpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             HelpType::None => write!(f, " "),
-            HelpType::Text => write!(f, " [text]"),
-            HelpType::Number => write!(f, " [number]"),
-            HelpType::Path => write!(f, " [path]"),
+            HelpType::Text => write!(f, "[text] "),
+            HelpType::Number => write!(f, "[number] "),
+            HelpType::Path => write!(f, "[path] "),
             HelpType::Custom(val) => write!(f, "[{}] ", val.to_lowercase()),
         }
     }
@@ -84,17 +84,17 @@ trait CommonInternal<'a> {
     /// Checks the help type for the intended data
     fn no_data(&self) -> bool;
     /// Applies [AfterLaunch]-related tasks
-    fn apply_afters(&mut self, data: String);
+    fn apply_afters(&mut self, data: Option<String>);
 }
 
 /// Contains common elements to both commands and arguments which can be used after launch to provide context; used via macros and automation
 #[doc(hidden)]
 #[derive(Default)]
 pub struct AfterLaunch {
+    /// User-implemented closure which is ran at parse-time, if found
+    pub run: Option<Box<dyn FnMut(Option<String>)>>,
     /// Raw data found from parsing, if found
     data: Option<String>,
-    /// User-implemented closure which is ran at parse-time, if found
-    run: Option<Box<dyn FnMut(Option<&str>)>>,
 }
 
 pub struct Command<'a> {
@@ -136,8 +136,9 @@ impl<'a> Command<'a> {
         &mut self,
         input_args: &mut Peekable<impl Iterator<Item = String>>,
     ) -> Result<()> {
-        if self.no_data() && input_args.peek().is_none() {
-            Err(Error::NoCommandsProvided)
+        if !self.no_data() && input_args.peek().is_none() {
+            // TODO: move to parse_next for all subcommand coverage
+            Err(Error::DataRequired(vec![]))
         } else {
             self.parse_next(input_args, &mut vec![])
         }
@@ -168,7 +169,7 @@ impl<'a> Command<'a> {
             cmd.parse_next(stream, call)?
         } else if self.help_type != HelpType::None {
             // data for self
-            self.apply_afters(left)
+            self.apply_afters(Some(left))
         } else {
             // unwanted data
             return Err(Error::CommandNotFound((left, call.clone())));
@@ -222,11 +223,10 @@ impl<'a> Command<'a> {
             // mutable data application, due to rust
             for arg in self.args.iter_mut() {
                 if arg.instigators.contains(&instigator_str) {
-                    arg.apply_afters(
-                        stream
-                            .next()
-                            .ok_or_else(|| Error::DataRequired(call.clone()))?,
-                    )
+                    match stream.next() {
+                        None if !arg.no_data() => return Err(Error::DataRequired(call.clone())),
+                        got => arg.apply_afters(got),
+                    }
                 }
             }
         }
@@ -324,12 +324,12 @@ impl<'a> CommonInternal<'a> for Command<'a> {
         self.help_type == HelpType::None
     }
 
-    fn apply_afters(&mut self, data: String) {
+    fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
         if let Some(run) = &mut self.after_launch.run {
-            run(Some(&data))
+            run(data.clone())
         }
-        self.after_launch.data = Some(data);
+        self.after_launch.data = data;
     }
 }
 
@@ -370,12 +370,12 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
         self.help_type == HelpType::None
     }
 
-    fn apply_afters(&mut self, data: String) {
+    fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
         if let Some(run) = &mut self.after_launch.run {
-            run(Some(&data))
+            run(data.clone())
         }
-        self.after_launch.data = Some(data);
+        self.after_launch.data = data;
     }
 }
 
@@ -423,15 +423,17 @@ macro_rules! cli_below {
             $crate::cli_below!($wu; $($tail)*);
         }
     };
-    // parses type aliases
-    ($wu:expr; $(,)? parses: $(&)?str $($tail:tt)* ) => { $crate::cli_below!($wu; parses: text) };
-    ($wu:expr; $(,)? parses: $(&)?String $($tail:tt)* ) => { $crate::cli_below!($wu; parses: text) };
-    ($wu:expr; $(,)? parses: $(&)?Path $($tail:tt)* ) => { $crate::cli_below!($wu; parses: path) };
-    ($wu:expr; $(,)? parses: $(&)?PathBuf $($tail:tt)* ) => { $crate::cli_below!($wu; parses: path) };
     // help arg errors
     ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
     ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
     ($wu:expr; $(,)? help: { $($inner:tt)* } $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
+    // run
+    ($wu:expr; $(,)? run: ($c:expr) $($tail:tt)*) => {
+        {
+            $wu.after_launch.run = Some(Box::new($c));
+            $crate::cli_below!($wu; $($tail)*);
+        }
+    };
     // args
     ($wu:expr; $(,)? $($(-)?- $left:ident),* $(,)? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
@@ -479,6 +481,13 @@ macro_rules! arg_below {
         $arg.help = $help.into();
         $crate::arg_below!($arg; $($tail)*);
     };
+    // run
+    ($arg:expr; $(,)? run: ($c:expr) $($tail:tt)*) => {
+        {
+            $arg.after_launch.run = Some(Box::new($c));
+            $crate::arg_below!($arg; $($tail)*);
+        }
+    };
     // parses defaults
     ($arg:expr; $(,)? parses: none $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::None; $crate::arg_below!($arg; $($tail)*); } };
     ($arg:expr; $(,)? parses: text $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::Text; $crate::arg_below!($arg; $($tail)*); } };
@@ -496,11 +505,6 @@ macro_rules! arg_below {
             $crate::arg_below!($arg; $($tail)*);
         }
     };
-    // parses type aliases
-    ($arg:expr; $(,)? parses: $(&)?str $($tail:tt)* ) => { $crate::arg_below!($arg; parses: text) };
-    ($arg:expr; $(,)? parses: $(&)?String $($tail:tt)* ) => { $crate::arg_below!($arg; parses: text) };
-    ($arg:expr; $(,)? parses: $(&)?Path $($tail:tt)* ) => { $crate::arg_below!($arg; parses: path) };
-    ($arg:expr; $(,)? parses: $(&)?PathBuf $($tail:tt)* ) => { $crate::arg_below!($arg; parses: path) };
 }
 
 #[cfg(test)]
@@ -671,12 +675,12 @@ mod tests {
         cli_below!(cli!(); help: "hi");
         cli!();
         cli!(help: "hi");
-        cli!(parses: PathBuf);
-        cli!(help: "hi", parses: PathBuf);
-        cli!(parses: PathBuf, help: "hi");
+        cli!(parses: text);
+        cli!(help: "hi", parses: text);
+        cli!(parses: path, help: "hi");
         cli! {
             help: "hello",
-            parses: PathBuf,
+            parses: text,
             -a, -b: {},
             -a, -b: {
                 help: "hello this"
@@ -686,8 +690,8 @@ mod tests {
         cli! {
             help: "My cool program",
             --hello: {help: "hi"},
-            create: { help: "Creates something", -i: { help: "Id to add", parses: &str } },
-            delete: { help: "Deletes something", --name: { help: "Name to delete", parses: &str } },
+            create: { help: "Creates something", -i: { help: "Id to add", parses: text } },
+            delete: { help: "Deletes something", --name: { help: "Name to delete", parses: text } },
             -d, --debug: { help: "Debug mode" }
         };
     }
