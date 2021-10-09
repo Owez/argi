@@ -8,8 +8,7 @@ mod error;
 pub use error::{Error, Result};
 
 use std::io::{self, Write};
-use std::iter::Peekable;
-use std::{env, fmt, process};
+use std::{env, fmt, iter::Peekable, process};
 
 /// Whitelisted overriding help targets
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
@@ -44,7 +43,7 @@ impl Default for HelpType {
 impl fmt::Display for HelpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HelpType::None => Ok(()),
+            HelpType::None => write!(f, " "),
             HelpType::Text => write!(f, " [text]"),
             HelpType::Number => write!(f, " [number]"),
             HelpType::Path => write!(f, " [path]"),
@@ -54,13 +53,8 @@ impl fmt::Display for HelpType {
 }
 
 /// Help message to display to the user
+#[derive(Default)]
 pub struct Help<'a>(Option<&'a str>);
-
-impl<'a> Default for Help<'a> {
-    fn default() -> Self {
-        Self(None)
-    }
-}
 
 impl<'a> From<Option<&'a str>> for Help<'a> {
     fn from(opt_string: Option<&'a str>) -> Self {
@@ -93,21 +87,14 @@ trait CommonInternal<'a> {
     fn apply_afters(&mut self, data: String);
 }
 
-/// Contains common elements to both commands and arguments which can be used after launch to provide context
-struct AfterLaunch {
+/// Contains common elements to both commands and arguments which can be used after launch to provide context; used via macros and automation
+#[doc(hidden)]
+#[derive(Default)]
+pub struct AfterLaunch {
     /// Raw data found from parsing, if found
     data: Option<String>,
     /// User-implemented closure which is ran at parse-time, if found
     run: Option<Box<dyn FnMut(Option<&str>)>>,
-}
-
-impl<'a> Default for AfterLaunch {
-    fn default() -> Self {
-        Self {
-            data: None,
-            run: None,
-        }
-    }
 }
 
 pub struct Command<'a> {
@@ -116,23 +103,12 @@ pub struct Command<'a> {
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
-    after_launch: AfterLaunch,
+    /// Internal usage options and user implementations
+    #[doc(hidden)]
+    pub after_launch: AfterLaunch,
 }
 
 impl<'a> Command<'a> {
-    /// Creates a new command for the "root", hidden from docs as this should be only accessed via macros
-    #[doc(hidden)]
-    pub fn new_root() -> Self {
-        Self {
-            name: "",
-            help: Help::default(),
-            help_type: HelpType::None,
-            args: vec![],
-            subcmds: vec![],
-            after_launch: AfterLaunch::default(),
-        }
-    }
-
     pub fn launch(&mut self) {
         const ERROR: &str = "\nError:\n  ";
         let mut stream = env::args();
@@ -359,7 +335,9 @@ pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
     pub help_type: HelpType,
-    after_launch: AfterLaunch,
+    /// Internal usage options and user implementations
+    #[doc(hidden)]
+    pub after_launch: AfterLaunch,
 }
 
 impl<'a> CommonInternal<'a> for Argument<'a> {
@@ -399,101 +377,123 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
 #[macro_export]
 macro_rules! cli {
-    () => { $crate::Command::new_root() };
+    () => { $crate::Command {
+        name: "",
+        help: $crate::Help::default(),
+        help_type: $crate::HelpType::None,
+        args: vec![],
+        subcmds: vec![],
+        after_launch: $crate::AfterLaunch::default(),
+    } };
     ($($tail:tt)*) => {
         {
-            let mut cli = $crate::cli!();
+            let mut cli =  $crate::cli!();
             $crate::cli_below!(cli; $($tail)*);
             cli
         }
      };
 }
 
-// TODO: uniform tt munching, not half tt and half brute-force
 #[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
 #[macro_export]
 macro_rules! cli_below {
-    // recursion-only
-    ($cmd:expr; $($($left:literal),* $(,)? $(:)? { $($tail:tt)* }),* $(,)?) => {
-        enum Detected<'a> {
-            Command($crate::Command<'a>),
-            Argument($crate::Argument<'a>)
-        }
-
-        $(
-            let detected =None;
-            $(
-                if $left.starts_with("-") {
-                    match detected {
-                        Some(Detected::Command(_)) => todo!("expected cmd error"),
-                        _ => ()
-                    }
-
-                    if $left.starts_with("--") {
-                        todo!("new long arg")
-                    } else {
-                        todo!("new short arg")
-                    }
-                } else {
-                    match detected {
-                        Some(Detected::Argument(_)) => todo!("expected arg error"),
-                        _ => ()
-                    }
-
-                    todo!("new subcommand")
-                }
-            )*
-
-            match detected.unwrap() {
-                Detected::Command(_subcmd) => todo!("command"),
-                Detected::Argument(_arg) => todo!("argument"),
-            }
-        )*
-     };  // TODO: optimise, remove
-    // meta-only help
-    ($cmd:expr; help: $help:literal) => { $cmd.help = $help.into() };
-    // meta-only parses
-    ($cmd:expr; parses: none) => { $cmd.help_type = $crate::HelpType::None };
-    ($cmd:expr; parses: text) => { $cmd.help_type = $crate::HelpType::Text };
-    ($cmd:expr; parses: path) => { $cmd.help_type = $crate::HelpType::Path };
-    ($cmd:expr; parses: $parses:literal) => {
+    // empty (end of parsing)
+    ($($wu:expr;)? $(,)?) => {};
+    // help
+    ($wu:expr; $(,)? help: $help:literal $($tail:tt)* ) => { { $wu.help = $help.into(); $crate::cli_below!($wu; $($tail)*); } };
+    // parses defaults
+    ($wu:expr; $(,)? parses: none $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::None; $crate::cli_below!($wu; $($tail)*); } };
+    ($wu:expr; $(,)? parses: text $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Text; $crate::cli_below!($wu; $($tail)*); } };
+    ($wu:expr; $(,)? parses: path $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Path; $crate::cli_below!($wu; $($tail)*); } };
+    ($wu:expr; $(,)? parses: $parses:literal $($tail:tt)* ) => {
         {
             // NOTE: you can't test errors without using the compiletest_rs crate
-            match $parses  {
+            // FIXME: reformat with issue #7 <https://github.com/Owez/argi/issues/7>
+            match $parses {
                 "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
                 "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
                 "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
                 _ => $cmd.help_type = $crate::HelpType::Custom($parses)
             }
+            $crate::cli_below!($wu; $($tail)*);
         }
     };
-    ($cmd:expr; parses: None) => { $cmd.help_type = $crate::HelpType::None };
-    ($cmd:expr; parses: $(&)?str) => { $cmd.help_type = $crate::HelpType::Text };
-    ($cmd:expr; parses: String) => { $cmd.help_type = $crate::HelpType::Text };
-    ($cmd:expr; parses: std::path::Path) => { $cmd.help_type = $crate::HelpType::Path };
-    ($cmd:expr; parses: PathBuf) => { $cmd.help_type = $crate::HelpType::Path };
-    // TODO: more
-    // TODO: figure out run going into parses
-    // meta-only mixed
-    ($cmd:expr; help: $help:literal, parses: $parses:tt) => {
-        $crate::cli_below!($cmd; help: $help);
-        $crate::cli_below!($cmd; parses: $parses);
+    // parses type aliases
+    ($wu:expr; $(,)? parses: $(&)?str $($tail:tt)* ) => { $crate::cli_below!($wu; parses: text) };
+    ($wu:expr; $(,)? parses: $(&)?String $($tail:tt)* ) => { $crate::cli_below!($wu; parses: text) };
+    ($wu:expr; $(,)? parses: $(&)?Path $($tail:tt)* ) => { $crate::cli_below!($wu; parses: path) };
+    ($wu:expr; $(,)? parses: $(&)?PathBuf $($tail:tt)* ) => { $crate::cli_below!($wu; parses: path) };
+    // help arg errors
+    ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
+    ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
+    ($wu:expr; $(,)? help: { $($inner:tt)* } $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
+    // args
+    ($wu:expr; $(,)? $($(-)?- $left:ident),* $(,)? : { $($inner:tt)* } $($tail:tt)* ) => {
+        {
+            let instigators = &[ $( stringify!($left) ),* ];
+            let mut arg = $crate::Argument {
+                instigators,
+                help: $crate::Help::default(),
+                help_type: $crate::HelpType::default(),
+                after_launch: $crate::AfterLaunch::default()
+            };
+
+            $crate::arg_below!(arg; $($inner)*);
+            $wu.args.push(arg);
+            $crate::cli_below!($wu; $($tail)*);
+        }
     };
-    ($cmd:expr; parses: $parses:tt, help: $help:literal) => { $crate::cli_below!($cmd; help: $help, parses: $parses) };
-    // mixed
-    ($cmd:expr; help: $help:literal, $($further:tt)*) => {
-        $crate::cli_below!($cmd; help: $help);
-        $crate::cli_below!($cmd; $($further)*);
+    // commands
+    ($wu:expr; $(,)? $left:ident: { $($inner:tt)* } $($tail:tt)* ) => {
+        {
+            let mut cmd = $crate::Command {
+                name: stringify!($left),
+                help: $crate::Help::default(),
+                help_type: $crate::HelpType::default(),
+                args: vec![],
+                subcmds: vec![],
+                after_launch: $crate::AfterLaunch::default()
+            };
+
+            $crate::cli_below!(cmd; $($inner)*);
+            $wu.subcmds.push(cmd);
+            $crate::cli_below!($wu; $($tail)*);
+        }
     };
-    ($cmd:expr; parses: $parses:tt, $($further:tt)*) => {
-        $crate::cli_below!($cmd; parses: $parses);
-        $crate::cli_below!($cmd; $($further)*);
+}
+
+#[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
+#[macro_export]
+macro_rules! arg_below {
+    // end of parsing
+    ($($arg:expr;)? $(,)?) => {};
+    // help
+    ($arg:expr; help: $help:literal $($tail:tt)*) => {
+        $arg.help = $help.into();
+        $crate::arg_below!($arg; $($tail)*);
     };
-    ($cmd:expr; help: $help:literal, parses: $parses:tt, $($further:tt)*) => {
-        $crate::cli_below!($cmd; help: $help, parses: $parses);
-        $crate::cli_below!($cmd; $($further)*);
+    // parses defaults
+    ($arg:expr; $(,)? parses: none $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::None; $crate::arg_below!($arg; $($tail)*); } };
+    ($arg:expr; $(,)? parses: text $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::Text; $crate::arg_below!($arg; $($tail)*); } };
+    ($arg:expr; $(,)? parses: path $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::Path; $crate::arg_below!($arg; $($tail)*); } };
+    ($arg:expr; $(,)? parses: $parses:literal $($tail:tt)* ) => {
+        {
+            // NOTE: you can't test errors without using the compiletest_rs crate
+            // FIXME: reformat with issue #7 <https://github.com/Owez/argi/issues/7>
+            match $parses {
+                "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
+                "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
+                "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
+                _ => $cmd.help_type = $crate::HelpType::Custom($parses)
+            }
+            $crate::arg_below!($arg; $($tail)*);
+        }
     };
-    ($cmd:expr; parses: $parses:tt, help: $help:literal, $($further:tt)*) => { $crate::cli_below!($cmd; help: $help, parses: $parses, $($further)*) };
+    // parses type aliases
+    ($arg:expr; $(,)? parses: $(&)?str $($tail:tt)* ) => { $crate::arg_below!($arg; parses: text) };
+    ($arg:expr; $(,)? parses: $(&)?String $($tail:tt)* ) => { $crate::arg_below!($arg; parses: text) };
+    ($arg:expr; $(,)? parses: $(&)?Path $($tail:tt)* ) => { $crate::arg_below!($arg; parses: path) };
+    ($arg:expr; $(,)? parses: $(&)?PathBuf $($tail:tt)* ) => { $crate::arg_below!($arg; parses: path) };
 }
 
 #[cfg(test)]
@@ -662,12 +662,19 @@ mod tests {
         cli! {
             help: "hello",
             parses: PathBuf,
-            "-a", "-b" {},
-            "-a", "-b" {
+            -a, -b: {},
+            -a, -b: {
                 help: "hello this"
             },
-            "-a", "-b" {},
-        }
+            -a, -b: {},
+        };
+        cli! {
+            help: "My cool program",
+            --hello: {help: "hi"},
+            create: { help: "Creates something", -i: { help: "Id to add", parses: &str } },
+            delete: { help: "Deletes something", --name: { help: "Name to delete", parses: &str } },
+            -d, --debug: { help: "Debug mode" }
+        };
     }
 
     // TODO: more raw parsing tests
