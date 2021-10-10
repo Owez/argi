@@ -408,13 +408,6 @@ pub struct Argument<'a> {
     pub data: Option<String>,
 }
 
-impl<'a> Argument<'a> {
-    // TODO: talk about uniformity with [Command::data] method
-    pub fn data(&self) -> Option<String> {
-        self.data.clone()
-    }
-}
-
 impl<'a> CommonInternal<'a> for Argument<'a> {
     fn help_left(&self) -> String {
         let mut output = String::new();
