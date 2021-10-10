@@ -142,6 +142,44 @@ impl<'a> Command<'a> {
         }
     }
 
+    // TODO: talk about panicking here
+    pub fn data(&self, query: &str) -> Option<String> {
+        if let Some(instigator) = query.strip_prefix("--") {
+            if query.len() < 2 + 2 {
+                panic!("Long arguments (starting with `--`) must be 2 or more characters long")
+            }
+            self.get_data_arg(instigator)
+        } else if query.starts_with("-") {
+            if query.len() > 2 {
+                panic!("Short arguments (starting with `-`) must only be 1 character long")
+            }
+            let instigator = &query[1..];
+            self.get_data_arg(instigator)
+        } else {
+            self.get_data_cmd(query)
+        }
+    }
+
+    /// Gets the data value for a command or panics
+    fn get_data_cmd(&self, query: &str) -> Option<String> {
+        for subcmd in &self.subcmds {
+            if subcmd.name == query {
+                return subcmd.data.clone();
+            }
+        }
+        panic!("No command found with '{}' name", query)
+    }
+
+    /// Gets the data value for an argument or panics; don't include the `-` or `--` of arguments
+    fn get_data_arg(&self, query: &str) -> Option<String> {
+        for arg in &self.args {
+            if arg.instigators.contains(&query) {
+                return arg.data.clone();
+            }
+        }
+        panic!("No argument found with {} instigator", query)
+    }
+
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
     fn parse_next(
         &mut self,
@@ -335,6 +373,27 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     }
 }
 
+const fn streq(x: &str, y: &str) -> bool {
+    let mut idx = 0;
+    let a = x.as_bytes();
+    let b = y.as_bytes();
+    if x.len() != y.len() {
+        return false;
+    }
+
+    loop {
+        if idx >= x.len() {
+            return true;
+        }
+
+        if a[idx] != b[idx] {
+            return false;
+        }
+
+        idx += 1;
+    }
+}
+
 pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
@@ -387,6 +446,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
 #[macro_export]
 macro_rules! cli {
+    // new plain cli
     () => { $crate::Command {
         name: "",
         help: $crate::Help::default(),
@@ -396,13 +456,14 @@ macro_rules! cli {
         used: false,
         run:None,data:None,
     } };
+    // configurations for new cli
     ($($tail:tt)*) => {
         {
             let mut cli =  $crate::cli!();
             $crate::cli_below!(cli; $($tail)*);
             cli
         }
-     };
+    };
 }
 
 #[doc(hidden)] // rust workaround, #61265 (see https://github.com/rust-lang/rust/issues/61265)
