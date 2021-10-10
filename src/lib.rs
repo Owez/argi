@@ -95,10 +95,12 @@ pub struct Command<'a> {
     pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
+    // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// Indicates if a user has invoked this command at any point
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
     pub run: Option<fn(&Self, Option<String>)>,
-    /// Raw data found from parsing, if parsed
+    /// Raw data found from parsing
     pub data: Option<String>,
 }
 
@@ -338,10 +340,12 @@ pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
     pub help_type: HelpType,
+    // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// Indicates if a user has invoked this argument at any point
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
     pub run: Option<fn(&Self, Option<String>)>,
-    /// Raw data found from parsing, if parsed
+    /// Raw data found from parsing
     pub data: Option<String>,
 }
 
