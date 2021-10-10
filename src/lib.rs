@@ -77,7 +77,7 @@ impl<'a> fmt::Display for Help<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
             Some(help) => write!(f, "{}", help),
-            None => write!(f, "No help provided"),
+            None => Ok(()), // no help provided
         }
     }
 }
