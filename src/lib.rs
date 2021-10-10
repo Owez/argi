@@ -89,16 +89,6 @@ trait CommonInternal<'a> {
     fn apply_afters(&mut self, data: Option<String>);
 }
 
-/// Contains common elements to both commands and arguments which can be used after launch to provide context; used via macros and automation
-#[doc(hidden)]
-#[derive(Default)]
-pub struct AfterLaunch {
-    /// User-implemented closure which is ran at parse-time, if found
-    pub run: Option<Box<dyn FnMut(Option<String>)>>,
-    /// Raw data found from parsing, if found
-    data: Option<String>,
-}
-
 pub struct Command<'a> {
     pub name: &'a str,
     pub help: Help<'a>,
@@ -106,9 +96,10 @@ pub struct Command<'a> {
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
     pub used: bool,
-    /// Internal usage options and user implementations
-    #[doc(hidden)]
-    pub after_launch: AfterLaunch,
+    /// User-implemented closure which is ran at parse-time, if added
+    pub run: Option<Box<dyn FnMut(Option<String>)>>,
+    /// Raw data found from parsing, if parsed
+    pub data: Option<String>,
 }
 
 impl<'a> Command<'a> {
@@ -331,10 +322,10 @@ impl<'a> CommonInternal<'a> for Command<'a> {
 
     fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
-        if let Some(run) = &mut self.after_launch.run {
+        if let Some(run) = &mut self.run {
             run(data.clone())
         }
-        self.after_launch.data = data;
+        self.data = data;
     }
 }
 
@@ -343,9 +334,10 @@ pub struct Argument<'a> {
     pub help: Help<'a>,
     pub help_type: HelpType,
     pub used: bool,
-    /// Internal usage options and user implementations
-    #[doc(hidden)]
-    pub after_launch: AfterLaunch,
+    /// User-implemented closure which is ran at parse-time, if added
+    pub run: Option<Box<dyn FnMut(Option<String>)>>,
+    /// Raw data found from parsing, if parsed
+    pub data: Option<String>,
 }
 
 impl<'a> CommonInternal<'a> for Argument<'a> {
@@ -378,10 +370,10 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
     fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
-        if let Some(run) = &mut self.after_launch.run {
+        if let Some(run) = &mut self.run {
             run(data.clone())
         }
-        self.after_launch.data = data;
+        self.data = data;
     }
 }
 
@@ -394,7 +386,7 @@ macro_rules! cli {
         args: vec![],
         subcmds: vec![],
         used: false,
-        after_launch: $crate::AfterLaunch::default(),
+        run:None,data:None,
     } };
     ($($tail:tt)*) => {
         {
@@ -416,19 +408,7 @@ macro_rules! cli_below {
     ($wu:expr; $(,)? parses: none $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::None; $crate::cli_below!($wu; $($tail)*); } };
     ($wu:expr; $(,)? parses: text $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Text; $crate::cli_below!($wu; $($tail)*); } };
     ($wu:expr; $(,)? parses: path $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Path; $crate::cli_below!($wu; $($tail)*); } };
-    ($wu:expr; $(,)? parses: $parses:literal $($tail:tt)* ) => {
-        {
-            // NOTE: you can't test errors without using the compiletest_rs crate
-            // FIXME: reformat with issue #7 <https://github.com/Owez/argi/issues/7>
-            match $parses {
-                "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
-                "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
-                "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
-                _ => $cmd.help_type = $crate::HelpType::Custom($parses)
-            }
-            $crate::cli_below!($wu; $($tail)*);
-        }
-    };
+    ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $cmd.help_type = $crate::HelpType::Custom(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
     // help arg errors
     ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
     ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
@@ -441,16 +421,21 @@ macro_rules! cli_below {
         }
     };
     // args
-    ($wu:expr; $(,)? $($(-)?- $left:ident),* $(,)? : { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $($(-)?- $left:ident),+ $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
-            let instigators = &[ $( stringify!($left) ),* ];
+            let instigators = &[ $( stringify!($left) ),+ ];
+            #[allow(unused_mut)]
             let mut arg = $crate::Argument {
                 instigators,
                 help: $crate::Help::default(),
                 help_type: $crate::HelpType::default(),
                 used: false,
-                after_launch: $crate::AfterLaunch::default()
+                run:None,data:None
             };
+
+            $(
+                $crate::arg_below!(arg; parses: $parses);
+            )?
 
             $crate::arg_below!(arg; $($inner)*);
             $wu.args.push(arg);
@@ -458,7 +443,7 @@ macro_rules! cli_below {
         }
     };
     // commands
-    ($wu:expr; $(,)? $left:ident: { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $left:ident $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
             let mut cmd = $crate::Command {
                 name: stringify!($left),
@@ -467,8 +452,12 @@ macro_rules! cli_below {
                 args: vec![],
                 subcmds: vec![],
                 used: false,
-                after_launch: $crate::AfterLaunch::default()
+                run:None,data:None
             };
+
+            $(
+                $crate::cli_below!(cmd; parses: $parses);
+            )?
 
             $crate::cli_below!(cmd; $($inner)*);
             $wu.subcmds.push(cmd);
@@ -531,14 +520,16 @@ mod tests {
                     help: None.into(),
                     help_type: HelpType::Path,
                     used: false,
-                    after_launch: AfterLaunch::default(), // TODO: after launch to ensure working with "args_basic" test
+                    run: None,
+                    data: None, // TODO: after launch to ensure working with "args_basic" test
                 },
                 Argument {
                     instigators: &["z", "zeta"],
                     help: "Simple help".into(),
                     help_type: HelpType::Text,
                     used: false,
-                    after_launch: AfterLaunch::default(),
+                    run: None,
+                    data: None,
                 },
             ],
             subcmds: vec![Command {
@@ -548,13 +539,12 @@ mod tests {
                 args: vec![],
                 subcmds: vec![],
                 used: false,
-                after_launch: AfterLaunch {
-                    data: None,
-                    run: Some(Box::new(|_| println!("{}", ID_STRING))),
-                },
+                data: None,
+                run: Some(Box::new(|_| println!("{}", ID_STRING))),
             }],
             used: false,
-            after_launch: AfterLaunch::default(),
+            run: None,
+            data: None,
         }
     }
 
@@ -567,7 +557,8 @@ mod tests {
             args: vec![],
             subcmds: vec![],
             used: false,
-            after_launch: AfterLaunch::default(),
+            run: None,
+            data: None,
         };
         assert_eq!(cmd.help_left(), "mine [number]".to_string());
     }
@@ -579,7 +570,8 @@ mod tests {
             help: None.into(),
             help_type: HelpType::Path,
             used: false,
-            after_launch: AfterLaunch::default(),
+            run: None,
+            data: None,
         };
         assert_eq!(arg.help_left(), "-a -b --append [path]".to_string())
     }
@@ -606,7 +598,7 @@ mod tests {
         cmd.arg_flow(&mut input_stream, &mut vec![], "-a".to_string())
             .unwrap();
 
-        assert_eq!(cmd.args[0].after_launch.data, Some(data));
+        assert_eq!(cmd.args[0].data, Some(data));
     }
 
     // TODO: implement, see issue #1 (https://github.com/Owez/argi/issues/1)
@@ -619,8 +611,8 @@ mod tests {
     //     cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
     //         .unwrap();
 
-    //     assert_eq!(cmd.args[0].after_launch.data, Some(data.clone()));
-    //     assert_eq!(cmd.args[1].after_launch.data, Some(data.clone()));
+    //     assert_eq!(cmd.args[0].data, Some(data.clone()));
+    //     assert_eq!(cmd.args[1].data, Some(data.clone()));
     // }
 
     #[test]
@@ -632,7 +624,7 @@ mod tests {
         cmd.arg_flow(&mut input_stream, &mut vec![], "--append".to_string())
             .unwrap();
 
-        assert_eq!(cmd.args[0].after_launch.data, Some(data));
+        assert_eq!(cmd.args[0].data, Some(data));
     }
 
     #[test]
@@ -662,8 +654,8 @@ mod tests {
         // parse_next version
         cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
             .unwrap();
-        assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
-        assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
+        assert_eq!(cmd.data, Some("21".to_string())); // mine
+        assert_eq!(cmd.args[0].data, Some("./path".to_string())); // -a
         assert!(cmd.args[0].used); // -a is used?
 
         // reset
@@ -672,8 +664,8 @@ mod tests {
         // launch_custom version
         cmd.launch_custom(&mut stream.clone().into_iter().peekable())
             .unwrap();
-        assert_eq!(cmd.after_launch.data, Some("21".to_string())); // mine
-        assert_eq!(cmd.args[0].after_launch.data, Some("./path".to_string())); // -a
+        assert_eq!(cmd.data, Some("21".to_string())); // mine
+        assert_eq!(cmd.args[0].data, Some("./path".to_string())); // -a
     }
 
     #[test]
