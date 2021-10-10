@@ -162,22 +162,22 @@ impl<'a> Command<'a> {
 
     /// Gets the data value for a command or panics
     fn get_data_cmd(&self, query: &str) -> Option<String> {
-        for subcmd in &self.subcmds {
-            if subcmd.name == query {
-                return subcmd.data.clone();
-            }
-        }
-        panic!("No command found with '{}' name", query)
+        self.subcmds
+            .iter()
+            .find(|cmd| cmd.name == query)
+            .expect(&format!("No command found with '{}' name", query))
+            .data
+            .clone()
     }
 
     /// Gets the data value for an argument or panics; don't include the `-` or `--` of arguments
     fn get_data_arg(&self, query: &str) -> Option<String> {
-        for arg in &self.args {
-            if arg.instigators.contains(&query) {
-                return arg.data.clone();
-            }
-        }
-        panic!("No argument found with {} instigator", query)
+        self.args
+            .iter()
+            .find(|arg| arg.instigators.contains(&query))
+            .expect(&format!("No argument found with '{}' name", query))
+            .data
+            .clone()
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
