@@ -144,40 +144,41 @@ impl<'a> Command<'a> {
 
     // TODO: talk about panicking here
     pub fn data(&self, query: &str) -> Option<String> {
-        if let Some(instigator) = query.strip_prefix("--") {
+        if query.starts_with("-") {
+            self.get_arg(query).data.clone()
+        } else {
+            self.get_cmd(query).data.clone()
+        }
+    }
+
+    // TODO: talk about panicking here
+    pub fn get_arg(&self, query: &str) -> &Argument<'a> {
+        let instigator = if let Some(instigator) = query.strip_prefix("--") {
             if query.len() < 2 + 2 {
                 panic!("Long arguments (starting with `--`) must be 2 or more characters long")
             }
-            self.get_data_arg(instigator)
+            instigator
         } else if query.starts_with("-") {
             if query.len() > 2 {
                 panic!("Short arguments (starting with `-`) must only be 1 character long")
             }
-            let instigator = &query[1..];
-            self.get_data_arg(instigator)
+            &query[1..]
         } else {
-            self.get_data_cmd(query)
-        }
+            panic!()
+        };
+
+        self.args
+            .iter()
+            .find(|arg| arg.instigators.contains(&instigator))
+            .expect(&format!("No argument found with '{}' name", instigator))
     }
 
-    /// Gets the data value for a command or panics
-    fn get_data_cmd(&self, query: &str) -> Option<String> {
+    // TODO: talk about panicking here
+    pub fn get_cmd(&self, query: &str) -> &Command<'a> {
         self.subcmds
             .iter()
             .find(|cmd| cmd.name == query)
             .expect(&format!("No command found with '{}' name", query))
-            .data
-            .clone()
-    }
-
-    /// Gets the data value for an argument or panics; don't include the `-` or `--` of arguments
-    fn get_data_arg(&self, query: &str) -> Option<String> {
-        self.args
-            .iter()
-            .find(|arg| arg.instigators.contains(&query))
-            .expect(&format!("No argument found with '{}' name", query))
-            .data
-            .clone()
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
@@ -405,6 +406,13 @@ pub struct Argument<'a> {
     pub run: Option<fn(&Self, Option<String>)>,
     /// Raw data found from parsing
     pub data: Option<String>,
+}
+
+impl<'a> Argument<'a> {
+    // TODO: talk about uniformity with [Command::data] method
+    pub fn data(&self) -> Option<String> {
+        self.data.clone()
+    }
 }
 
 impl<'a> CommonInternal<'a> for Argument<'a> {
@@ -756,9 +764,10 @@ mod tests {
         };
         cli! {
             help: "My cool program",
+            run: (|ctx, _| ctx.data("--")),
             --hello: {help: "hi"},
-            create: { help: "Creates something", -i: { help: "Id to add", parses: text } },
-            delete: { help: "Deletes something", --name: { help: "Name to delete", parses: text } },
+            create: { help: "Creates something", -i [text]: { help: "Id to add" } },
+            delete: { help: "Deletes something", --name [text]: { help: "Name to delete" } },
             -d --debug: { help: "Debug mode" }
         };
     }
