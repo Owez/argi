@@ -14,7 +14,9 @@ use std::{env, fmt, iter::Peekable, process};
 const HELP_POSSIBLES: &[&str] = &["--help", "-h", "help"];
 
 /// Gets file name current exe as a string
-pub(crate) fn get_cur_exe<'a>() -> Result<String> {
+pub(crate) fn get_cur_exe() -> Result<String> {
+    // TODO: `./` if on unix-like?
+    // TODO: redo this whole function
     Ok(env::current_exe()
         .map_err(|_| Error::InvalidCurExe)?
         .file_name()
@@ -23,9 +25,10 @@ pub(crate) fn get_cur_exe<'a>() -> Result<String> {
         .into_string()
         .map_err(|_| Error::InvalidCurExe)?
         .trim()
-        .to_string()) // TODO: `./` if on unix-like?
+        .to_string())
 }
 
+// TODO: remove this, make it just Option<String>. see issue #7 <https://github.com/Owez/argi/issues/7>
 #[derive(Debug, PartialEq, Eq)]
 pub enum HelpType {
     None,
@@ -145,7 +148,6 @@ impl<'a> Command<'a> {
         stream: &mut Peekable<impl Iterator<Item = String>>,
         call: &mut Vec<String>,
     ) -> Result<()> {
-        // TODO: recurse
         let left = match stream.next() {
             Some(val) if HELP_POSSIBLES.contains(&val.as_str()) => {
                 self.help(&mut io::stdout())?;
@@ -174,8 +176,6 @@ impl<'a> Command<'a> {
             // unwanted data
             return Err(Error::CommandNotFound((left, call.clone())));
         }
-
-        // TODO: check logic of above vs below
 
         // recurse for arguments until stream end, all else is delt with via subcommand
         self.parse_next(stream, call)
@@ -322,7 +322,6 @@ impl<'a> CommonInternal<'a> for Command<'a> {
         output
     }
 
-    // TODO: merge below two
     fn no_data(&self) -> bool {
         self.help_type == HelpType::None
     }
@@ -363,7 +362,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
             }
         }
 
-        // FIXME: make less janky formats, use write! instead
+        // FIXME: make less janky formats, use write! instead. see issue #3 <https://github.com/Owez/argi/issues/3>
         let mut fmtd: Vec<String> = short.iter().map(|s| format!("-{}", s)).collect();
         fmtd.extend(long.iter().map(|l| format!("--{}", l)));
 
