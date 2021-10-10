@@ -490,7 +490,7 @@ macro_rules! cli_below {
         }
     };
     // args
-    ($wu:expr; $(,)? $($(-)?- $left:ident),+ $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $($(-)?- $left:ident)+ $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
             let instigators = &[ $( stringify!($left) ),+ ];
             #[allow(unused_mut)]
@@ -748,18 +748,18 @@ mod tests {
         cli! {
             help: "hello",
             parses: text,
-            -a, -b: {},
-            -a, -b: {
+            -a -b: {},
+            -a -b: {
                 help: "hello this"
             },
-            -a, -b: {},
+            -a -b: {},
         };
         cli! {
             help: "My cool program",
             --hello: {help: "hi"},
             create: { help: "Creates something", -i: { help: "Id to add", parses: text } },
             delete: { help: "Deletes something", --name: { help: "Name to delete", parses: text } },
-            -d, --debug: { help: "Debug mode" }
+            -d --debug: { help: "Debug mode" }
         };
     }
 
