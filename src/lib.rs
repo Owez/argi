@@ -97,7 +97,7 @@ pub struct Command<'a> {
     pub subcmds: Vec<Command<'a>>,
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
-    pub run: Option<Box<dyn FnMut(Option<String>)>>,
+    pub run: Option<fn(&Self, Option<String>)>,
     /// Raw data found from parsing, if parsed
     pub data: Option<String>,
 }
@@ -149,8 +149,13 @@ impl<'a> Command<'a> {
                 self.help(&mut io::stdout())?;
                 return Ok(());
             } // in whitelist, return with help
-            Some(val) => val,      // good value
-            None => return Ok(()), // end of stream
+            Some(val) => val, // good value
+            None => {
+                if let Some(run) = self.run {
+                    run(self, None)
+                }
+                return Ok(());
+            } // end of stream, run and return
         };
         call.push(left.clone()); // add new left to call stream
 
@@ -322,10 +327,10 @@ impl<'a> CommonInternal<'a> for Command<'a> {
 
     fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
-        if let Some(run) = &mut self.run {
-            run(data.clone())
+        self.data = data.clone(); // keep this above; this should appear pre-done to user
+        if let Some(run) = self.run {
+            run(self, data)
         }
-        self.data = data;
     }
 }
 
@@ -335,7 +340,7 @@ pub struct Argument<'a> {
     pub help_type: HelpType,
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
-    pub run: Option<Box<dyn FnMut(Option<String>)>>,
+    pub run: Option<fn(&Self, Option<String>)>,
     /// Raw data found from parsing, if parsed
     pub data: Option<String>,
 }
@@ -370,10 +375,10 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
     fn apply_afters(&mut self, data: Option<String>) {
         self.used = true;
-        if let Some(run) = &mut self.run {
-            run(data.clone())
+        self.data = data.clone(); // keep this above; this should appear pre-done to user
+        if let Some(run) = self.run {
+            run(self, data)
         }
-        self.data = data;
     }
 }
 
@@ -408,7 +413,7 @@ macro_rules! cli_below {
     ($wu:expr; $(,)? parses: none $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::None; $crate::cli_below!($wu; $($tail)*); } };
     ($wu:expr; $(,)? parses: text $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Text; $crate::cli_below!($wu; $($tail)*); } };
     ($wu:expr; $(,)? parses: path $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Path; $crate::cli_below!($wu; $($tail)*); } };
-    ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $cmd.help_type = $crate::HelpType::Custom(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
+    ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $wu.help_type = $crate::HelpType::Custom(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
     // help arg errors
     ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
     ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
@@ -416,7 +421,7 @@ macro_rules! cli_below {
     // run
     ($wu:expr; $(,)? run: ($c:expr) $($tail:tt)*) => {
         {
-            $wu.after_launch.run = Some(Box::new($c));
+            $wu.run = Some($c);
             $crate::cli_below!($wu; $($tail)*);
         }
     };
@@ -479,7 +484,7 @@ macro_rules! arg_below {
     // run
     ($arg:expr; $(,)? run: ($c:expr) $($tail:tt)*) => {
         {
-            $arg.after_launch.run = Some(Box::new($c));
+            $arg.run = Some($c);
             $crate::arg_below!($arg; $($tail)*);
         }
     };
@@ -540,7 +545,7 @@ mod tests {
                 subcmds: vec![],
                 used: false,
                 data: None,
-                run: Some(Box::new(|_| println!("{}", ID_STRING))),
+                run: Some(|_, _| println!("{}", ID_STRING)),
             }],
             used: false,
             run: None,
