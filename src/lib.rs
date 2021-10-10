@@ -28,35 +28,6 @@ pub(crate) fn get_cur_exe() -> Result<String> {
         .to_string())
 }
 
-// TODO: remove this, make it just Option<String>. see issue #7 <https://github.com/Owez/argi/issues/7>
-#[derive(Debug, PartialEq, Eq)]
-pub enum HelpType {
-    None,
-    Text,
-    Number,
-    Path,
-    Custom(&'static str),
-    // TODO: optional help
-}
-
-impl Default for HelpType {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl fmt::Display for HelpType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HelpType::None => Ok(()),
-            HelpType::Text => write!(f, "[text]"),
-            HelpType::Number => write!(f, "[number]"),
-            HelpType::Path => write!(f, "[path]"),
-            HelpType::Custom(val) => write!(f, "[{}]", val.to_lowercase()),
-        }
-    }
-}
-
 /// Help message to display to the user
 #[derive(Default)]
 pub struct Help<'a>(Option<&'a str>);
@@ -86,8 +57,6 @@ impl<'a> fmt::Display for Help<'a> {
 trait CommonInternal<'a> {
     /// Generates leftmost help message
     fn help_left(&self) -> String;
-    /// Checks the help type for the intended data
-    fn no_data(&self) -> bool;
     /// Applies [AfterLaunch]-related tasks
     fn apply_afters(&mut self, data: Option<String>);
 }
@@ -95,10 +64,11 @@ trait CommonInternal<'a> {
 pub struct Command<'a> {
     pub name: &'a str,
     pub help: Help<'a>,
-    pub help_type: HelpType,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
     // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// The type of data this command parses, if any
+    pub parses: Option<&'a str>,
     /// Indicates if a user has invoked this command at any point
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
@@ -134,7 +104,7 @@ impl<'a> Command<'a> {
         &mut self,
         input_args: &mut Peekable<impl Iterator<Item = String>>,
     ) -> Result<()> {
-        if !self.no_data() && input_args.peek().is_none() {
+        if self.parses.is_some() && input_args.peek().is_none() {
             // TODO: move to parse_next for all subcommand coverage
             Err(Error::DataRequired(vec![]))
         } else {
@@ -144,7 +114,7 @@ impl<'a> Command<'a> {
 
     // TODO: talk about panicking here
     pub fn data(&self, query: &str) -> Option<String> {
-        if query.starts_with("-") {
+        if query.starts_with('-') {
             self.get_arg(query).data.clone()
         } else {
             self.get_cmd(query).data.clone()
@@ -158,11 +128,11 @@ impl<'a> Command<'a> {
                 panic!("Long arguments (starting with `--`) must be 2 or more characters long")
             }
             instigator
-        } else if query.starts_with("-") {
+        } else if let Some(instigator) = query.strip_prefix('-') {
             if query.len() > 2 {
                 panic!("Short arguments (starting with `-`) must only be 1 character long")
             }
-            &query[1..]
+            instigator
         } else {
             panic!()
         };
@@ -170,7 +140,7 @@ impl<'a> Command<'a> {
         self.args
             .iter()
             .find(|arg| arg.instigators.contains(&instigator))
-            .expect(&format!("No argument found with '{}' name", instigator))
+            .unwrap_or_else(|| panic!("No argument found with '{}' name", instigator))
     }
 
     // TODO: talk about panicking here
@@ -178,7 +148,7 @@ impl<'a> Command<'a> {
         self.subcmds
             .iter()
             .find(|cmd| cmd.name == query)
-            .expect(&format!("No command found with '{}' name", query))
+            .unwrap_or_else(|| panic!("No command found with '{}' name", query))
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
@@ -208,7 +178,7 @@ impl<'a> Command<'a> {
         } else if let Some(cmd) = self.search_subcmds_mut(&left) {
             // subcommand
             cmd.parse_next(stream, call)?
-        } else if self.help_type != HelpType::None {
+        } else if self.parses.is_some() {
             // data for self
             self.apply_afters(Some(left))
         } else {
@@ -263,7 +233,9 @@ impl<'a> Command<'a> {
             for arg in self.args.iter_mut() {
                 if arg.instigators.contains(&instigator_str) {
                     match stream.next() {
-                        None if !arg.no_data() => return Err(Error::DataRequired(call.clone())),
+                        None if arg.parses.is_some() => {
+                            return Err(Error::DataRequired(call.clone()))
+                        }
                         got => arg.apply_afters(got),
                     }
                 }
@@ -291,7 +263,7 @@ impl<'a> Command<'a> {
             "Usage: {} {}{} [OPTIONS]\n\n  {}",
             get_cur_exe()?,
             self.name,
-            self.help_type,
+            fmt_parses(&self.parses),
             self.help
         ))?;
 
@@ -357,12 +329,8 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     fn help_left(&self) -> String {
         let mut output = self.name.to_string();
         output.push(' ');
-        output.push_str(&self.help_type.to_string());
+        output.push_str(&fmt_parses(&self.parses));
         output
-    }
-
-    fn no_data(&self) -> bool {
-        self.help_type == HelpType::None
     }
 
     fn apply_afters(&mut self, data: Option<String>) {
@@ -374,32 +342,12 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     }
 }
 
-const fn streq(x: &str, y: &str) -> bool {
-    let mut idx = 0;
-    let a = x.as_bytes();
-    let b = y.as_bytes();
-    if x.len() != y.len() {
-        return false;
-    }
-
-    loop {
-        if idx >= x.len() {
-            return true;
-        }
-
-        if a[idx] != b[idx] {
-            return false;
-        }
-
-        idx += 1;
-    }
-}
-
 pub struct Argument<'a> {
     pub instigators: &'a [&'a str],
     pub help: Help<'a>,
-    pub help_type: HelpType,
     // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// The type of data this argument parses, if any
+    pub parses: Option<&'a str>,
     /// Indicates if a user has invoked this argument at any point
     pub used: bool,
     /// User-implemented closure which is ran at parse-time, if added
@@ -428,12 +376,8 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
         output.push_str(fmtd.join(" ").as_str());
         output.push(' ');
-        output.push_str(&self.help_type.to_string());
+        output.push_str(&fmt_parses(&self.parses));
         output
-    }
-
-    fn no_data(&self) -> bool {
-        self.help_type == HelpType::None
     }
 
     fn apply_afters(&mut self, data: Option<String>) {
@@ -445,15 +389,23 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
     }
 }
 
+fn fmt_parses(parses: &Option<&str>) -> String {
+    if let Some(parses) = parses {
+        format!("[{}]", parses)
+    } else {
+        String::new()
+    }
+}
+
 #[macro_export]
 macro_rules! cli {
     // new plain cli
     () => { $crate::Command {
         name: "",
         help: $crate::Help::default(),
-        help_type: $crate::HelpType::None,
         args: vec![],
         subcmds: vec![],
+        parses: None,
         used: false,
         run:None,data:None,
     } };
@@ -474,11 +426,8 @@ macro_rules! cli_below {
     ($($wu:expr;)? $(,)?) => {};
     // help
     ($wu:expr; $(,)? help: $help:literal $($tail:tt)* ) => { { $wu.help = $help.into(); $crate::cli_below!($wu; $($tail)*); } };
-    // parses defaults
-    ($wu:expr; $(,)? parses: none $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::None; $crate::cli_below!($wu; $($tail)*); } };
-    ($wu:expr; $(,)? parses: text $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Text; $crate::cli_below!($wu; $($tail)*); } };
-    ($wu:expr; $(,)? parses: path $($tail:tt)* ) => { { $wu.help_type = $crate::HelpType::Path; $crate::cli_below!($wu; $($tail)*); } };
-    ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $wu.help_type = $crate::HelpType::Custom(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
+    // parses
+    ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $wu.parses = Some(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
     // help arg errors
     ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
     ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
@@ -498,7 +447,7 @@ macro_rules! cli_below {
             let mut arg = $crate::Argument {
                 instigators,
                 help: $crate::Help::default(),
-                help_type: $crate::HelpType::default(),
+                parses:None,
                 used: false,
                 run:None,data:None
             };
@@ -518,9 +467,9 @@ macro_rules! cli_below {
             let mut cmd = $crate::Command {
                 name: stringify!($left),
                 help: $crate::Help::default(),
-                help_type: $crate::HelpType::default(),
                 args: vec![],
                 subcmds: vec![],
+                parses:None,
                 used: false,
                 run:None,data:None
             };
@@ -553,23 +502,9 @@ macro_rules! arg_below {
             $crate::arg_below!($arg; $($tail)*);
         }
     };
-    // parses defaults
-    ($arg:expr; $(,)? parses: none $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::None; $crate::arg_below!($arg; $($tail)*); } };
-    ($arg:expr; $(,)? parses: text $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::Text; $crate::arg_below!($arg; $($tail)*); } };
-    ($arg:expr; $(,)? parses: path $($tail:tt)* ) => { { $arg.help_type = $crate::HelpType::Path; $crate::arg_below!($arg; $($tail)*); } };
-    ($arg:expr; $(,)? parses: $parses:literal $($tail:tt)* ) => {
-        {
-            // NOTE: you can't test errors without using the compiletest_rs crate
-            // FIXME: reformat with issue #7 <https://github.com/Owez/argi/issues/7>
-            match $parses {
-                "none" => std::compile_error!("Use `parses: none` or leave it out entirely instead of the the stringified `parses: \"none\"` version"),
-                "text" => std::compile_error!("Use `parses: text` instead of the the stringified `parses: \"text\"` version"),
-                "path" => std::compile_error!("Use `parses: path` instead of the the stringified `parses: \"path\"` version"),
-                _ => $cmd.help_type = $crate::HelpType::Custom($parses)
-            }
-            $crate::arg_below!($arg; $($tail)*);
-        }
-    };
+    // parses
+    ($arg:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $arg.parses = Some(stringify!($parses)); $crate::arg_below!($arg; $($tail)*); };
+
 }
 
 #[cfg(test)]
@@ -583,12 +518,12 @@ mod tests {
         Command {
             name: "mine",
             help: "This is a simple command".into(),
-            help_type: HelpType::Number,
+            parses: Some("number"),
             args: vec![
                 Argument {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
-                    help_type: HelpType::Path,
+                    parses: Some("path"),
                     used: false,
                     run: None,
                     data: None, // TODO: after launch to ensure working with "args_basic" test
@@ -596,7 +531,7 @@ mod tests {
                 Argument {
                     instigators: &["z", "zeta"],
                     help: "Simple help".into(),
-                    help_type: HelpType::Text,
+                    parses: Some("text"),
                     used: false,
                     run: None,
                     data: None,
@@ -605,7 +540,7 @@ mod tests {
             subcmds: vec![Command {
                 name: "water",
                 help: None.into(),
-                help_type: HelpType::Path,
+                parses: Some("path"),
                 args: vec![],
                 subcmds: vec![],
                 used: false,
@@ -623,7 +558,7 @@ mod tests {
         let cmd = Command {
             name: "mine",
             help: None.into(),
-            help_type: HelpType::Number,
+            parses: Some("number"),
             args: vec![],
             subcmds: vec![],
             used: false,
@@ -638,7 +573,7 @@ mod tests {
         let arg = Argument {
             instigators: &["a", "b", "append"],
             help: None.into(),
-            help_type: HelpType::Path,
+            parses: Some("path"),
             used: false,
             run: None,
             data: None,
@@ -656,7 +591,7 @@ mod tests {
         lines.next();
         let res = lines.collect::<Vec<&str>>().join("\n");
 
-        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]    No help provided\n\nArguments:\n  -a -b --append [path]    No help provided\n  -z --zeta [text]         Simple help".to_string())
+        assert_eq!(res, "\n  This is a simple command\n\nCommands:\n  water [path]    \n\nArguments:\n  -a -b --append [path]    \n  -z --zeta [text]         Simple help".to_string())
     }
 
     #[test]
@@ -701,8 +636,8 @@ mod tests {
     fn searching_subcmds() {
         let mut cmd = example_cmd();
         assert_eq!(
-            cmd.search_subcmds_mut("water").unwrap().help_type,
-            HelpType::Path
+            cmd.search_subcmds_mut("water").unwrap().parses,
+            Some("path")
         ); // subcommand doesn't use partialeq so check HelpType
     }
 
@@ -757,7 +692,7 @@ mod tests {
         };
         cli! {
             help: "My cool program",
-            run: (|ctx, _| ctx.data("--")),
+            run: (|ctx, _| println!("{:?}", ctx.data("-d"))),
             --hello: {help: "hi"},
             create: { help: "Creates something", -i [text]: { help: "Id to add" } },
             delete: { help: "Deletes something", --name [text]: { help: "Name to delete" } },
