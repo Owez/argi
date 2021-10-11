@@ -4,11 +4,11 @@ use crate::get_cur_exe;
 use std::{fmt, io};
 
 /// Crate-specific result type for ease-of-use
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// Represents potential parsing errors which may occur
 #[derive(Debug)]
-pub enum Error {
+pub(crate) enum Error {
     /// Data was required after command/argument but was not found
     DataRequired(Vec<String>),
     /// Command or argument shouldn't have data attached but it does

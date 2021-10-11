@@ -5,8 +5,7 @@
 
 mod error;
 
-pub use error::{Error, Result};
-
+use error::{Error, Result};
 use std::io::{self, Write};
 use std::{env, fmt, iter::Peekable, process};
 
@@ -28,7 +27,13 @@ pub(crate) fn get_cur_exe() -> Result<String> {
         .to_string())
 }
 
-/// Help message to display to the user
+/// Message to display to a user to provide argument or command information
+///
+/// # Usage
+///
+/// As a developer, you don't really have to ever manually use this structure
+/// as it's simply a public storage item for a help message entered at generation.
+/// This can be used to make custom help message formats if wanted.
 #[derive(Default)]
 pub struct Help<'a>(Option<&'a str>);
 
@@ -82,7 +87,7 @@ impl<'a> Command<'a> {
         const ERROR: &str = "\nError:\n  ";
         let mut stream = env::args();
         stream.next();
-        match self.launch_custom(&mut stream.peekable()) {
+        match self.parse_next(&mut stream.peekable(), &mut vec![]) {
             Ok(()) => (),
             Err(err) => {
                 // help
@@ -97,18 +102,6 @@ impl<'a> Command<'a> {
                 eprintln!("{}{}!", ERROR, err);
                 process::exit(1)
             }
-        }
-    }
-
-    pub fn launch_custom(
-        &mut self,
-        input_args: &mut Peekable<impl Iterator<Item = String>>,
-    ) -> Result<()> {
-        if self.parses.is_some() && input_args.peek().is_none() {
-            // TODO: move to parse_next for all subcommand coverage
-            Err(Error::DataRequired(vec![]))
-        } else {
-            self.parse_next(input_args, &mut vec![])
         }
     }
 
@@ -667,7 +660,7 @@ mod tests {
         cmd = example_cmd();
 
         // launch_custom version
-        cmd.launch_custom(&mut stream.clone().into_iter().peekable())
+        cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
             .unwrap();
         assert_eq!(cmd.data, Some("21".to_string())); // mine
         assert_eq!(cmd.args[0].data, Some("./path".to_string())); // -a
@@ -700,5 +693,57 @@ mod tests {
         };
     }
 
-    // TODO: more raw parsing tests
+    #[test]
+    fn data_get() {
+        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
+        fn launch_run(ctx: &Command, _: Option<String>) {
+            assert_eq!(ctx.data("-a"), Some(ADATA.to_string()));
+            assert_eq!(ctx.data("--address"), Some(ADATA.to_string()));
+        }
+
+        let mut cli = cli! {
+            launch: {
+                run: (launch_run),
+                -a --address [text]: {help: "Custom launch address"}
+            }
+        };
+        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
+        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
+    }
+
+    #[test]
+    #[should_panic]
+    fn data_get_panic_lshort() {
+        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
+        fn launch_run(ctx: &Command, _: Option<String>) {
+            ctx.data("--a");
+        }
+
+        let mut cli = cli! {
+            launch: {
+                run: (launch_run),
+                -a --address [text]: {help: "Custom launch address"}
+            }
+        };
+        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
+        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
+    }
+
+    #[test]
+    #[should_panic]
+    fn data_get_panic_slong() {
+        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
+        fn launch_run(ctx: &Command, _: Option<String>) {
+            ctx.data("-address");
+        }
+
+        let mut cli = cli! {
+            launch: {
+                run: (launch_run),
+                -a --address [text]: {help: "Custom launch address"}
+            }
+        };
+        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
+        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
+    }
 }
