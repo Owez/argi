@@ -19,6 +19,8 @@ pub(crate) enum Error {
     CommandNotFound((String, Vec<String>)),
     /// Argument name provided could not be found
     ArgumentNotFound((String, Vec<String>)),
+    /// Nothing was inputted
+    NothingInputted,
 }
 
 impl From<io::Error> for Error {
@@ -56,6 +58,7 @@ impl fmt::Display for Error {
                     fmt_call(call)
                 )
             }
+            Error::NothingInputted => write!(f, "Nothing was inputted"),
         }
     }
 }

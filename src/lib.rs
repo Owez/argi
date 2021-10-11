@@ -75,7 +75,7 @@ pub struct Command<'a> {
     pub used: bool,
     /// Raw data found from parsing
     pub data: Option<String>,
-    // TODO: merge all below with command by way of a new [Shared] struct, see issue #11 <https://github.com/Owez/argi/issues/11>
+    // TODO: merge all below with argument by way of a new [Shared] struct, see issue #11 <https://github.com/Owez/argi/issues/11>
     /// Help message, if added, for this argument
     pub help: Help<'a>,
     /// The type of data this argument parses, if any
@@ -86,24 +86,16 @@ pub struct Command<'a> {
 
 impl<'a> Command<'a> {
     pub fn launch(&mut self) {
-        const ERROR: &str = "\nError:\n  ";
-        let mut stream = env::args();
+        let mut stream = env::args().peekable();
         stream.next();
-        match self.parse_next(&mut stream.peekable(), &mut vec![]) {
-            Ok(()) => (),
-            Err(err) => {
-                // help
-                let stderr = io::stderr();
-                let mut stderr_lock = stderr.lock();
-                match self.help(&mut stderr_lock) {
-                    Ok(()) => (),
-                    Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
-                }
 
-                // print error
-                eprintln!("{}{}!", ERROR, err);
-                process::exit(1)
-            }
+        if self.parses.is_none() && self.run.is_none() && stream.peek().is_none() {
+            self.help_err(Error::NothingInputted);
+        }
+
+        match self.parse_next(&mut stream, &mut vec![]) {
+            Ok(()) => (),
+            Err(err) => self.help_err(err),
         }
     }
 
@@ -159,10 +151,14 @@ impl<'a> Command<'a> {
             } // in whitelist, return with help
             Some(val) => val, // good value
             None => {
-                if let Some(run) = self.run {
-                    run(self, None)
+                return if self.parses.is_some() {
+                    Err(Error::DataRequired(call.clone()))
+                } else {
+                    if let Some(run) = self.run {
+                        run(self, None)
+                    }
+                    Ok(())
                 }
-                return Ok(());
             } // end of stream, run and return
         };
         call.push(left.clone()); // add new left to call stream
@@ -317,6 +313,20 @@ impl<'a> Command<'a> {
         }
 
         Ok(())
+    }
+
+    fn help_err(&self, err: Error) {
+        const ERROR: &str = "\nError:\n  ";
+        let stderr = io::stderr();
+        let mut stderr_lock = stderr.lock();
+        match self.help(&mut stderr_lock) {
+            Ok(()) => (),
+            Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
+        }
+
+        // print error
+        eprintln!("{}{}!", ERROR, err);
+        process::exit(1)
     }
 }
 
