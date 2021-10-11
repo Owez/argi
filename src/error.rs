@@ -11,16 +11,10 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub(crate) enum Error {
     /// Data was required after command/argument but was not found
     DataRequired(Vec<String>),
-    /// Command or argument shouldn't have data attached but it does
-    UnknownData,
-    /// Parsing method was called but the cli has not yet been launched
-    NoDataToParse,
     /// Input/output error
     Io(io::Error),
     /// Current executable name is invalid
     InvalidCurExe,
-    /// No commands where provided at all
-    NoCommandsProvided,
     /// Command name provided could not be found
     CommandNotFound((String, Vec<String>)),
     /// Argument name provided could not be found
@@ -43,17 +37,8 @@ impl fmt::Display for Error {
                     fmt_call(call)
                 )
             }
-            Error::UnknownData => write!(
-                f,
-                "Command or argument shouldn't have data attached but it does"
-            ),
-            Error::NoDataToParse => write!(
-                f,
-                "Parsing method was called but the cli has not yet been launched"
-            ),
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),
-            Error::NoCommandsProvided => write!(f, "No commands where provided"),
             Error::CommandNotFound((cmd, call)) => {
                 write!(
                     f,

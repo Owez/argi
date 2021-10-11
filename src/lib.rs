@@ -68,10 +68,11 @@ trait CommonInternal<'a> {
 
 pub struct Command<'a> {
     pub name: &'a str,
-    pub help: Help<'a>,
     pub args: Vec<Argument<'a>>,
     pub subcmds: Vec<Command<'a>>,
     // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// Help message, if added, for this argument
+    pub help: Help<'a>,
     /// The type of data this command parses, if any
     pub parses: Option<&'a str>,
     /// Indicates if a user has invoked this command at any point
@@ -336,9 +337,11 @@ impl<'a> CommonInternal<'a> for Command<'a> {
 }
 
 pub struct Argument<'a> {
+    /// Calls which can be made which instigate this argument
     pub instigators: &'a [&'a str],
-    pub help: Help<'a>,
     // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
+    /// Help message, if added, for this argument
+    pub help: Help<'a>,
     /// The type of data this argument parses, if any
     pub parses: Option<&'a str>,
     /// Indicates if a user has invoked this argument at any point
