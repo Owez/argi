@@ -199,7 +199,7 @@ impl<'a> Command<'a> {
         let left = match stream.next() {
             Some(val) if HELP_POSSIBLES.contains(&val.as_str()) => {
                 self.help(&mut io::stdout())?;
-                return Ok(());
+                process::exit(0)
             } // in whitelist, return with help
             Some(val) => val, // good value
             None => {
@@ -261,7 +261,7 @@ impl<'a> Command<'a> {
                         Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
                             stream.next();
                             self.help(&mut io::stdout())?;
-                            return Ok(());
+                            process::exit(0)
                         }
                         _ => continue,
                     }
