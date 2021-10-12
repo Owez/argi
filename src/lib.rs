@@ -20,7 +20,7 @@
 //!         help: "Demo command-line utility",
 //!         run: (|_, _| println!("Hello, world!"))
 //!     }
-//!     .launch()
+//!     .launch();
 //! }
 //! ```
 //!
@@ -39,7 +39,7 @@
 //!
 //! This example is a more complex command-line interface which pretends to launch a website via the use of arguments:
 //!
-//! ```rust
+//! ```no_run
 //! use argi::{cli, data};
 //!
 //! fn main() {
