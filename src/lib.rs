@@ -165,8 +165,10 @@ pub struct Command<'a> {
     pub help: Help<'a>,
     /// The type of data this argument parses, if any
     pub parses: Option<&'a str>,
+    /// Indicates if parsing is an optional endeavour
+    pub parses_opt: bool,
     /// User-implemented closure which is ran at parse-time, if added
-    pub run: Option<fn(&Self, Option<String>)>,
+    pub run: Option<fn(&'_ Self, Option<String>)>,
 }
 
 impl<'a> Command<'a> {
@@ -303,7 +305,7 @@ impl<'a> Command<'a> {
             "Usage: {} {}{}",
             get_cur_exe()?,
             self.name,
-            fmt_parses(&self.parses),
+            fmt_parses(&self.parses, self.parses_opt),
         ))?;
 
         if self.parses.is_some() || !self.name.is_empty() {
@@ -393,7 +395,7 @@ impl<'a> CommonInternal<'a> for Command<'a> {
     fn help_left(&self) -> String {
         let mut output = self.name.to_string();
         output.push(' ');
-        output.push_str(&fmt_parses(&self.parses));
+        output.push_str(&fmt_parses(&self.parses, self.parses_opt));
         output
     }
 
@@ -419,8 +421,10 @@ pub struct Argument<'a> {
     pub help: Help<'a>,
     /// The type of data this argument parses, if any
     pub parses: Option<&'a str>,
+    /// Indicates if parsing is an optional endeavour
+    pub parses_opt: bool,
     /// User-implemented closure which is ran at parse-time, if added
-    pub run: Option<fn(&Self, Option<String>)>,
+    pub run: Option<fn(&'_ Self, Option<String>)>,
 }
 
 impl<'a> CommonInternal<'a> for Argument<'a> {
@@ -443,7 +447,7 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
 
         output.push_str(fmtd.join(" ").as_str());
         output.push(' ');
-        output.push_str(&fmt_parses(&self.parses));
+        output.push_str(&fmt_parses(&self.parses, self.parses_opt));
         output
     }
 
@@ -474,9 +478,10 @@ impl ArgiIsArg for Command<'_> {
     }
 }
 
-fn fmt_parses(parses: &Option<&str>) -> String {
+fn fmt_parses(parses: &Option<&str>, optional: bool) -> String {
     if let Some(parses) = parses {
-        format!("[{}]", parses)
+        let opt = if optional { "?" } else { "" };
+        format!("[{}{}]", parses, opt)
     } else {
         String::new()
     }
@@ -491,13 +496,15 @@ macro_rules! cli {
         args: vec![],
         subcmds: vec![],
         parses: None,
+        parses_opt: false,
         used: false,
-        run:None,data:None,
+        run:None,
+        data:None,
     } };
     // configurations for new cli
     ($($tail:tt)*) => {
         {
-            let mut cli =  $crate::cli!();
+            let mut cli = $crate::cli!();
             $crate::cli_below!(cli; $($tail)*);
             cli
         }
@@ -587,9 +594,11 @@ macro_rules! cli_below {
             let mut arg = $crate::Argument {
                 instigators,
                 help: $crate::Help::default(),
-                parses:None,
+                parses: None,
+                parses_opt: false, // TOOD: use
                 used: false,
-                run:None,data:None
+                run:None,
+                data:None
             };
 
             $(
@@ -609,9 +618,11 @@ macro_rules! cli_below {
                 help: $crate::Help::default(),
                 args: vec![],
                 subcmds: vec![],
-                parses:None,
+                parses: None,
+                parses_opt: false, // TODO: use
                 used: false,
-                run:None,data:None
+                run:None,
+                data:None
             };
 
             $(
@@ -659,11 +670,13 @@ mod tests {
             name: "mine",
             help: "This is a simple command".into(),
             parses: Some("number"),
+            parses_opt: false,
             args: vec![
                 Argument {
                     instigators: &["a", "b", "append"],
                     help: None.into(),
                     parses: Some("path"),
+                    parses_opt: false,
                     used: false,
                     run: None,
                     data: None, // TODO: after launch to ensure working with "args_basic" test
@@ -672,6 +685,7 @@ mod tests {
                     instigators: &["z", "zeta"],
                     help: "Simple help".into(),
                     parses: Some("text"),
+                    parses_opt: false,
                     used: false,
                     run: None,
                     data: None,
@@ -681,6 +695,7 @@ mod tests {
                 name: "water",
                 help: None.into(),
                 parses: Some("path"),
+                parses_opt: false,
                 args: vec![],
                 subcmds: vec![],
                 used: false,
@@ -699,6 +714,7 @@ mod tests {
             name: "mine",
             help: None.into(),
             parses: Some("number"),
+            parses_opt: false,
             args: vec![],
             subcmds: vec![],
             used: false,
@@ -714,6 +730,7 @@ mod tests {
             instigators: &["a", "b", "append"],
             help: None.into(),
             parses: Some("path"),
+            parses_opt: false,
             used: false,
             run: None,
             data: None,
@@ -807,4 +824,15 @@ mod tests {
             -d --debug: { help: "Debug mode" }
         };
     }
+
+    #[test]
+    fn fmt_parses_opt() {
+        assert_eq!(format!("[hello]"), fmt_parses(&Some("hello"), false));
+        assert_eq!(format!("[hello?]"), fmt_parses(&Some("hello"), true));
+        assert_eq!(String::new(), fmt_parses(&None, true));
+    }
+
+    // TODO: test data
+    // TODO: test get
+    // TODO: test help with opt parses
 }
