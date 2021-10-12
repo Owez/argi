@@ -1,4 +1,92 @@
-//! The simple cli library
+//! Argument parsing for the future 🚀
+//!
+//! # Status
+//!
+//! This package is now in beta, allowing developers to get a preliminary look at the features this library has to offer. The main missing section of argi is documentation and minor polish, but no promises on api compatibility!
+//!
+//! # Examples
+//!
+//! You can find more of the examples shown below within the useful [`examples`](examples/) directory.
+//!
+//! ## Basic
+//!
+//! This example simply prints the time-tested hello world message:
+//!
+//! ```rust
+//! use argi::cli;
+//!
+//! fn main() {
+//!     cli! {
+//!         help: "Demo command-line utility",
+//!         run: (|_, _| println!("Hello, world!"))
+//!     }
+//!     .launch()
+//! }
+//! ```
+//!
+//! The top-level help message for this example looks like:
+//!
+//! ```none
+//! Usage: basic [OPTIONS]
+//!
+//!   Demo command-line utility
+//!
+//! Options:
+//!   No commands or arguments found
+//! ```
+//!
+//! ## Pretend website
+//!
+//! This example is a more complex command-line interface which pretends to launch a website via the use of arguments:
+//!
+//! ```rust
+//! use argi::{cli, data};
+//!
+//! fn main() {
+//!     cli! {
+//!         help: "Demo application which launches something",
+//!         run: (|ctx, _| {
+//!             println!("Address found: {}", data!(ctx => --address));
+//!             println!("Port found: {}", data!(u16, ctx => --port));
+//!         }),
+//!         --address -a [text]: {
+//!             help: "Address to bind to"
+//!         },
+//!         --port -p [port]: {
+//!             help: "Port number from 0 to 65535"
+//!         }
+//!     }
+//!     .launch();
+//! }
+//! ```
+//!
+//! The top-level help message for this example looks like:
+//!
+//! ```none
+//! Usage: pretend_website [OPTIONS]
+//!
+//!   Demo application which launches something
+//!
+//! Arguments:
+//!   -a --address [text]    Address to bind to
+//!   -p --port [port]       Port number from 0 to 65535
+//! ```
+//!
+//! # Usage
+//!
+//! Place the following into your `Cargo.toml` file:
+//!
+//! ```toml
+//! [dependencies]
+//! argi = "0.1.0-beta.1"
+//! ```
+//!
+//! # Licensing
+//!
+//! This project is dual-licensed under both MIT and Apache, so feel free to use either at your discretion. Links to the files are listed below:
+//!
+//! - [MIT](LICENSE-MIT)
+//! - [Apache](LICENSE-APACHE)
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
@@ -86,7 +174,7 @@ pub struct Command<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn launch(&mut self) {
+    pub fn launch(mut self) -> Self {
         let mut stream = env::args().peekable();
         stream.next();
 
@@ -95,14 +183,17 @@ impl<'a> Command<'a> {
             process::exit(1)
         }
 
-        match self.parse_next(&mut stream, &mut vec![]) {
-            Ok(()) => (),
-            Err(err) => self.help_err(err),
+        match self.parse(&mut stream, &mut vec![]) {
+            Ok(()) => self,
+            Err(err) => {
+                self.help_err(err);
+                process::exit(1)
+            }
         }
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
-    fn parse_next(
+    fn parse(
         &mut self,
         stream: &mut Peekable<impl Iterator<Item = String>>,
         call: &mut Vec<String>,
@@ -114,7 +205,7 @@ impl<'a> Command<'a> {
             } // in whitelist, return with help
             Some(val) => val, // good value
             None => {
-                return if self.parses.is_some() {
+                return if self.parses.is_some() && self.data.is_none() {
                     Err(Error::DataRequired(call.clone()))
                 } else {
                     if let Some(run) = self.run {
@@ -131,7 +222,7 @@ impl<'a> Command<'a> {
             self.arg_flow(stream, call, left)?
         } else if let Some(cmd) = self.search_subcmds_mut(&left) {
             // subcommand
-            cmd.parse_next(stream, call)?
+            cmd.parse(stream, call)?
         } else if self.parses.is_some() {
             // data for self
             self.apply_afters(Some(left))
@@ -140,8 +231,7 @@ impl<'a> Command<'a> {
             return Err(Error::CommandNotFound((left, call.clone())));
         }
 
-        // recurse for arguments until stream end, all else is delt with via subcommand
-        self.parse_next(stream, call)
+        Ok(())
     }
 
     /// Pathway for arguments which automatically adds data to arguments if found in current instance
@@ -438,7 +528,6 @@ macro_rules! get {
     }
 }
 
-// TODO: talk about how this expects the root command
 #[macro_export]
 macro_rules! data {
     // custom parses
@@ -694,38 +783,6 @@ mod tests {
             cmd.search_subcmds_mut("water").unwrap().parses,
             Some("path")
         ); // subcommand doesn't use partialeq so check HelpType
-    }
-
-    #[test]
-    fn raw_parsing() {
-        // equals `./program mine 21 -a "./path" water`
-        let stream = vec![
-            "mine".to_string(),
-            "21".to_string(),
-            "-a".to_string(),
-            "./path".to_string(),
-            "water".to_string(),
-        ];
-
-        // generate
-        let mut cmd = example_cmd();
-        assert!(!cmd.args[0].used); // -a isnt used?
-
-        // parse_next version
-        cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
-            .unwrap();
-        assert_eq!(cmd.data, Some("21".to_string())); // mine
-        assert_eq!(cmd.args[0].data, Some("./path".to_string())); // -a
-        assert!(cmd.args[0].used); // -a is used?
-
-        // reset
-        cmd = example_cmd();
-
-        // launch_custom version
-        cmd.parse_next(&mut stream.clone().into_iter().peekable(), &mut vec![])
-            .unwrap();
-        assert_eq!(cmd.data, Some("21".to_string())); // mine
-        assert_eq!(cmd.args[0].data, Some("./path".to_string())); // -a
     }
 
     #[test]

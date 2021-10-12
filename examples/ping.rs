@@ -9,5 +9,5 @@ fn main() {
             run: (|_, ping| println!("{}", ping.unwrap()))
         }
     }
-    .launch()
+    .launch();
 }

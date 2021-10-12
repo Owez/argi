@@ -18,5 +18,5 @@ fn main() {
             -r --right [int]: {},
         },
     }
-    .launch()
+    .launch();
 }
