@@ -15,13 +15,11 @@
 //! ```rust
 //! use argi::cli;
 //!
-//! fn main() {
-//!     cli! {
-//!         help: "Demo command-line utility",
-//!         run: (|_, _| println!("Hello, world!"))
-//!     }
-//!     .launch();
+//! cli! {
+//!     help: "Demo command-line utility",
+//!     run: (|_, _| println!("Hello, world!"))
 //! }
+//! .launch();
 //! ```
 //!
 //! The top-level help message for this example looks like:
@@ -42,22 +40,20 @@
 //! ```no_run
 //! use argi::{cli, data};
 //!
-//! fn main() {
-//!     cli! {
-//!         help: "Demo application which launches something",
-//!         run: (|ctx, _| {
-//!             println!("Address found: {}", data!(ctx => --address));
-//!             println!("Port found: {}", data!(u16, ctx => --port));
-//!         }),
-//!         --address -a [text]: {
-//!             help: "Address to bind to"
-//!         },
-//!         --port -p [port]: {
-//!             help: "Port number from 0 to 65535"
-//!         }
+//! cli! {
+//!     help: "Demo application which launches something",
+//!     run: (|ctx, _| {
+//!         println!("Address found: {}", data!(ctx => --address));
+//!         println!("Port found: {}", data!(u16, ctx => --port));
+//!     }),
+//!     --address -a [text]: {
+//!         help: "Address to bind to"
+//!     },
+//!     --port -p [port]: {
+//!         help: "Port number from 0 to 65535"
 //!     }
-//!     .launch();
 //! }
+//! .launch();
 //! ```
 //!
 //! The top-level help message for this example looks like:
@@ -310,11 +306,11 @@ impl<'a> Command<'a> {
             fmt_parses(&self.parses),
         ))?;
 
-        if self.parses.is_some() || self.name != "" {
-            buf.write(&[b' '])?;
+        if self.parses.is_some() || !self.name.is_empty() {
+            buf.write_all(&[b' '])?;
         }
 
-        buf.write(b"[OPTIONS]")?;
+        buf.write_all(b"[OPTIONS]")?;
 
         if self.help.0.is_some() {
             buf.write_fmt(format_args!("\n\n  {}", self.help))?;
