@@ -4,13 +4,17 @@ use crate::get_cur_exe;
 use std::{fmt, io};
 
 /// Crate-specific result type for ease-of-use
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Represents potential parsing errors which may occur
 #[derive(Debug)]
-pub(crate) enum Error {
-    /// Data was required after command/argument but was not found
+pub enum Error {
+    /// Data was required after known command/argument in stack but was not found
     DataRequired(Vec<String>),
+    /// Data was required for argument but was not found, used in macro magic
+    DataRequiredArg,
+    /// Data was required for command but was not found, used in macro magic
+    DataRequiredCommand,
     /// Input/output error
     Io(io::Error),
     /// Current executable name is invalid
@@ -21,6 +25,8 @@ pub(crate) enum Error {
     ArgumentNotFound((String, Vec<String>)),
     /// Nothing was inputted
     NothingInputted,
+    /// Invalid data was provided
+    InvalidData(&'static str),
 }
 
 impl From<io::Error> for Error {
@@ -38,6 +44,10 @@ impl fmt::Display for Error {
                     "Data was required after \".. {}\" but was not found",
                     fmt_call(call)
                 )
+            }
+            Error::DataRequiredArg => write!(f, "Data was required for argument but was not found"),
+            Error::DataRequiredCommand => {
+                write!(f, "Data was required for command but was not found")
             }
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),
@@ -59,6 +69,7 @@ impl fmt::Display for Error {
                 )
             }
             Error::NothingInputted => write!(f, "Nothing was inputted"),
+            Error::InvalidData(v) => write!(f, "Data provided could not be parsed to {}", v),
         }
     }
 }

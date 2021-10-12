@@ -5,7 +5,8 @@
 
 mod error;
 
-use error::{Error, Result};
+pub use error::{Error, Result};
+
 use std::io::{self, Write};
 use std::{env, fmt, iter::Peekable, process};
 
@@ -91,51 +92,13 @@ impl<'a> Command<'a> {
 
         if self.parses.is_none() && self.run.is_none() && stream.peek().is_none() {
             self.help_err(Error::NothingInputted);
+            process::exit(1)
         }
 
         match self.parse_next(&mut stream, &mut vec![]) {
             Ok(()) => (),
             Err(err) => self.help_err(err),
         }
-    }
-
-    // TODO: talk about panicking here
-    pub fn data(&self, query: &str) -> Option<String> {
-        if query.starts_with('-') {
-            self.get_arg(query).data.clone()
-        } else {
-            self.get_cmd(query).data.clone()
-        }
-    }
-
-    // TODO: talk about panicking here
-    pub fn get_arg(&self, query: &str) -> &Argument<'a> {
-        let instigator = if let Some(instigator) = query.strip_prefix("--") {
-            if query.len() < 2 + 2 {
-                panic!("Long arguments (starting with `--`) must be 2 or more characters long")
-            }
-            instigator
-        } else if let Some(instigator) = query.strip_prefix('-') {
-            if query.len() > 2 {
-                panic!("Short arguments (starting with `-`) must only be 1 character long")
-            }
-            instigator
-        } else {
-            panic!()
-        };
-
-        self.args
-            .iter()
-            .find(|arg| arg.instigators.contains(&instigator))
-            .unwrap_or_else(|| panic!("No argument found with '{}' name", instigator))
-    }
-
-    // TODO: talk about panicking here
-    pub fn get_cmd(&self, query: &str) -> &Command<'a> {
-        self.subcmds
-            .iter()
-            .find(|cmd| cmd.name == query)
-            .unwrap_or_else(|| panic!("No command found with '{}' name", query))
     }
 
     /// Recurses from current command instance horizontally to fetch arguments and downwards to more subcommands
@@ -247,16 +210,25 @@ impl<'a> Command<'a> {
     }
 
     /// Writes full help message to buffer
-    fn help(&self, buf: &mut impl Write) -> Result<()> {
+    pub fn help(&self, buf: &mut impl Write) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
         buf.write_fmt(format_args!(
-            "Usage: {} {}{} [OPTIONS]\n\n  {}",
+            "Usage: {} {}{}",
             get_cur_exe()?,
             self.name,
             fmt_parses(&self.parses),
-            self.help
         ))?;
+
+        if self.parses.is_some() || self.name != "" {
+            buf.write(&[b' '])?;
+        }
+
+        buf.write(b"[OPTIONS]")?;
+
+        if self.help.0.is_some() {
+            buf.write_fmt(format_args!("\n\n  {}", self.help))?;
+        }
 
         /// Automatically pads left and right hand side of help messages together
         fn tab_to<'a>(buf: &mut impl Write, lr: Vec<(String, &Help<'a>)>) -> Result<()> {
@@ -315,7 +287,9 @@ impl<'a> Command<'a> {
         Ok(())
     }
 
-    fn help_err(&self, err: Error) {
+    /// Prints a provided error to the `stderr` buffer, used in macros so is public but hidden
+    #[doc(hidden)]
+    pub fn help_err(&self, err: Error) {
         const ERROR: &str = "\nError:\n  ";
         let stderr = io::stderr();
         let mut stderr_lock = stderr.lock();
@@ -326,7 +300,6 @@ impl<'a> Command<'a> {
 
         // print error
         eprintln!("{}{}!", ERROR, err);
-        process::exit(1)
     }
 }
 
@@ -397,6 +370,24 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
     }
 }
 
+/// Used to query if a fuzzy macro section is an argument or not
+#[doc(hidden)]
+pub trait ArgiIsArg {
+    fn is_arg(&self) -> bool;
+}
+
+impl ArgiIsArg for Argument<'_> {
+    fn is_arg(&self) -> bool {
+        true
+    }
+}
+
+impl ArgiIsArg for Command<'_> {
+    fn is_arg(&self) -> bool {
+        false
+    }
+}
+
 fn fmt_parses(parses: &Option<&str>) -> String {
     if let Some(parses) = parses {
         format!("[{}]", parses)
@@ -423,6 +414,62 @@ macro_rules! cli {
             let mut cli =  $crate::cli!();
             $crate::cli_below!(cli; $($tail)*);
             cli
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! get {
+    ($ctx:expr =>) => { $ctx };
+    ($ctx:expr => --$query:ident $($tail:tt)*) => {
+        $crate::get!($ctx.args.iter().find(|e| e.instigators.contains(&stringify!($query))).unwrap() => $($tail)*)
+    };
+    ($ctx:expr => -$query:ident $($tail:tt)*) => {
+        {
+            let name = stringify!($query);
+            if name.len() > 1 {
+                panic!()
+            }
+            $crate::get!($ctx => --$query $($tail)*)
+        }
+    };
+    ($ctx:expr => $query:ident $($tail:tt)*) => {
+        $crate::get!($ctx.subcmds.iter().find(|e| e.name == stringify!($query)).unwrap() => $($tail)*)
+    }
+}
+
+// TODO: talk about how this expects the root command
+#[macro_export]
+macro_rules! data {
+    // custom parses
+    ($to:ty, $ctx:expr => $($tail:tt)*) => {
+        {
+            let parsed = $crate::data!($ctx => $($tail)*).parse::<$to>();
+            match parsed {
+                Ok(v) => v,
+                Err(_) => {
+                    $ctx.help_err($crate::Error::InvalidData(stringify!($to)));
+                    std::process::exit(1)
+                }
+            }
+        }
+    };
+    // just to string
+    ($ctx:expr => $($tail:tt)*) => {
+        {
+            let opt_data = $crate::get!($ctx => $($tail)*).data.clone();
+            match opt_data {
+                Some(data) => data,
+                None => {
+                    use $crate::ArgiIsArg;
+                    let err = match $ctx.is_arg() {
+                        true => $crate::Error::DataRequiredArg,
+                        false => $crate::Error::DataRequiredCommand
+                    };
+                    $ctx.help_err(err);
+                    std::process::exit(1)
+                }
+            }
         }
     };
 }
@@ -700,65 +747,11 @@ mod tests {
         };
         cli! {
             help: "My cool program",
-            run: (|ctx, _| println!("{:?}", ctx.data("-d"))),
+            run: (|ctx, _| println!("{:?}", data!(ctx => -d))),
             --hello: {help: "hi"},
             create: { help: "Creates something", -i [text]: { help: "Id to add" } },
             delete: { help: "Deletes something", --name [text]: { help: "Name to delete" } },
             -d --debug: { help: "Debug mode" }
         };
-    }
-
-    #[test]
-    fn data_get() {
-        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
-        fn launch_run(ctx: &Command, _: Option<String>) {
-            assert_eq!(ctx.data("-a"), Some(ADATA.to_string()));
-            assert_eq!(ctx.data("--address"), Some(ADATA.to_string()));
-        }
-
-        let mut cli = cli! {
-            launch: {
-                run: (launch_run),
-                -a --address [text]: {help: "Custom launch address"}
-            }
-        };
-        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
-        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
-    }
-
-    #[test]
-    #[should_panic]
-    fn data_get_panic_lshort() {
-        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
-        fn launch_run(ctx: &Command, _: Option<String>) {
-            ctx.data("--a");
-        }
-
-        let mut cli = cli! {
-            launch: {
-                run: (launch_run),
-                -a --address [text]: {help: "Custom launch address"}
-            }
-        };
-        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
-        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
-    }
-
-    #[test]
-    #[should_panic]
-    fn data_get_panic_slong() {
-        const ADATA: &str = "fewfetrwnntrw!!!!wfe";
-        fn launch_run(ctx: &Command, _: Option<String>) {
-            ctx.data("-address");
-        }
-
-        let mut cli = cli! {
-            launch: {
-                run: (launch_run),
-                -a --address [text]: {help: "Custom launch address"}
-            }
-        };
-        cli.subcmds[0].args[0].data = Some(ADATA.to_string());
-        cli.subcmds[0].run.unwrap()(&cli.subcmds[0], None)
     }
 }
