@@ -180,7 +180,7 @@ impl<'a> Command<'a> {
         let mut stream = env::args().peekable();
         stream.next();
 
-        if self.parses.is_none() && self.run.is_none() && stream.peek().is_none() {
+        if !self.parses_opt && self.run.is_none() && stream.peek().is_none() {
             self.help_err(Error::NothingInputted);
             process::exit(1)
         }

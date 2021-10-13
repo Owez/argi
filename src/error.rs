@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// Data was required after known command/argument in stack but was not found
     DataRequired(Vec<String>),
-    /// Data was required for argument but was not found, used in macro magic
+    /// Data was required for argument but was not found
     DataRequiredArg(String), // FIXME: could add call here too
     /// Data was required for command but was not found, used in macro magic
     DataRequiredCommand,
