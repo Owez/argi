@@ -575,6 +575,12 @@ macro_rules! cli_below {
     ($wu:expr; $(,)? help: $help:literal $($tail:tt)* ) => { { $wu.help = $help.into(); $crate::cli_below!($wu; $($tail)*); } };
     // parses
     ($wu:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $wu.parses = Some(stringify!($parses)); $crate::cli_below!($wu; $($tail)*); };
+    // optional
+    ($wu:expr; $(,)? optional: true $($tail:tt)*) => { $wu.parses_opt = true };
+    ($wu:expr; $(,)? optional: false $($tail:tt)*) => { $wu.parses_opt = false };
+    // parses/optional matcher
+    ($wu:expr => parse; $parses:ident ?) => { $crate::cli_below!($wu; parses: $parses, optional: true) };
+    ($wu:expr => parse; $parses:ident) => { $crate::cli_below!($wu; parses: $parses) };
     // help arg errors
     ($wu:expr; $(,)? -h $($tail:tt)*) => { std::compile_error!("Help commands (`help` and `-h` along with `--help`) are reserved") };
     ($wu:expr; $(,)? --help $($tail:tt)*) => { $crate::cli_below!($wu; -h) };
@@ -587,7 +593,7 @@ macro_rules! cli_below {
         }
     };
     // args
-    ($wu:expr; $(,)? $($(-)?- $left:ident)+ $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $($(-)?- $left:ident)+ $([$($parses:tt)*])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
             let instigators = &[ $( stringify!($left) ),+ ];
             #[allow(unused_mut)]
@@ -597,21 +603,18 @@ macro_rules! cli_below {
                 parses: None,
                 parses_opt: false, // TOOD: use
                 used: false,
-                run:None,
-                data:None
+                run: None,
+                data: None
             };
 
-            $(
-                $crate::arg_below!(arg; parses: $parses);
-            )?
-
+            $($crate::arg_below!(arg => parse; $($parses)*);)?
             $crate::arg_below!(arg; $($inner)*);
             $wu.args.push(arg);
             $crate::cli_below!($wu; $($tail)*);
         }
     };
     // commands
-    ($wu:expr; $(,)? $left:ident $([$parses:ident])? : { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $left:ident $([$($parses:tt)*])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
             let mut cmd = $crate::Command {
                 name: stringify!($left),
@@ -621,14 +624,11 @@ macro_rules! cli_below {
                 parses: None,
                 parses_opt: false, // TODO: use
                 used: false,
-                run:None,
-                data:None
+                run: None,
+                data: None
             };
 
-            $(
-                $crate::cli_below!(cmd; parses: $parses);
-            )?
-
+            $($crate::arg_below!(cmd => parse; $($parses)*);)?
             $crate::cli_below!(cmd; $($inner)*);
             $wu.subcmds.push(cmd);
             $crate::cli_below!($wu; $($tail)*);
@@ -655,7 +655,12 @@ macro_rules! arg_below {
     };
     // parses
     ($arg:expr; $(,)? parses: $parses:ident $($tail:tt)* ) => { $arg.parses = Some(stringify!($parses)); $crate::arg_below!($arg; $($tail)*); };
+    // optional
+    ($arg:expr; $(,)? optional: true $($tail:tt)*) => { $arg.parses_opt = true };
+    ($arg:expr; $(,)? optional: false $($tail:tt)*) => { $arg.parses_opt = false };
 
+    ($arg:expr => parse; $parses:ident ?) => { $crate::cli_below!($arg; parses: $parses, optional: true) };
+    ($arg:expr => parse; $parses:ident) => { $crate::cli_below!($arg; parses: $parses) };
 }
 
 #[cfg(test)]
