@@ -65,7 +65,7 @@ fn main() {
 
 (Generating [this](https://github.com/Owez/argi/blob/master/examples/pretend_website_help.txt) help page)
 
-You can find more of the examples shown below within the useful [`examples`](examples/) directory.
+You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory.
 
 ## Licensing
 
