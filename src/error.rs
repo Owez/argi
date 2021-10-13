@@ -13,8 +13,6 @@ pub enum Error {
     DataRequired(Vec<String>),
     /// Data was required for argument but was not found
     DataRequiredArg(String), // FIXME: could add call here too
-    /// Data was required for command but was not found, used in macro magic
-    DataRequiredCommand,
     /// Input/output error
     Io(io::Error),
     /// Current executable name is invalid
@@ -54,9 +52,6 @@ impl fmt::Display for Error {
                     format!("--{}", arg)
                 };
                 write!(f, "Data was required for {} but was not found", fmt_arg)
-            }
-            Error::DataRequiredCommand => {
-                write!(f, "Data was required for command but was not found")
             }
             Error::Io(err) => write!(f, "Input/output error, {}", err),
             Error::InvalidCurExe => write!(f, "Current executable name is invalid"),

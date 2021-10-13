@@ -575,24 +575,7 @@ macro_rules! get {
 #[macro_export]
 macro_rules! data {
     // plain (string) data fetch
-    ($ctx:expr => $($tail:tt)*) => {
-        {
-            let got = $crate::get!($ctx => $($tail)*);
-            match got.data.clone() {
-                Some(data) => Some(data),
-                None if got.parses_opt || got.parses.is_none() => None,
-                _ => {
-                    use $crate::ArgiIsArg;
-                    let err = match got.is_arg() {
-                        true => $crate::Error::DataRequiredArg(got.instigators[0].to_string()),
-                        false => $crate::Error::DataRequiredCommand
-                    };
-                    $ctx.help_err(err);
-                    std::process::exit(1)
-                }
-            }
-        }
-    };
+    ($ctx:expr => $($tail:tt)*) => { $crate::get!($ctx => $($tail)*).data.clone() };
     // parse to type
     ($to:ty, $ctx:expr => $($tail:tt)*) => {
         $crate::data!($ctx => $($tail)*).map(|data| {
