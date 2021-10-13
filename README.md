@@ -22,7 +22,7 @@ fn main() {
         help: "Demo command-line utility",
         run: (|_, _| println!("Hello, world!"))
     }
-    .launch()
+    .launch();
 }
 ```
 
