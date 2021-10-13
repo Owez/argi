@@ -18,7 +18,7 @@ Place the following into your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-argi = "0.1.0-beta.4"
+argi = "0.1.0-beta.5"
 ```
 
 ## Example
