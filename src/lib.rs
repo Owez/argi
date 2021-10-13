@@ -553,7 +553,7 @@ macro_rules! cli {
 macro_rules! get {
     ($ctx:expr =>) => { $ctx };
     ($ctx:expr => --$query:ident $($tail:tt)*) => {
-        $crate::get!($ctx.args.iter().find(|e| e.instigators.contains(&stringify!($query))).unwrap() => $($tail)*)
+        $crate::get!($ctx.args.iter().find(|e| e.instigators.contains(&stringify!($query))).unwrap() => $($tail)*) // TODO: better error
     };
     ($ctx:expr => -$query:ident $($tail:tt)*) => {
         {
@@ -565,7 +565,7 @@ macro_rules! get {
         }
     };
     ($ctx:expr => $query:ident $($tail:tt)*) => {
-        $crate::get!($ctx.subcmds.iter().find(|e| e.name == stringify!($query)).unwrap() => $($tail)*)
+        $crate::get!($ctx.subcmds.iter().find(|e| e.name == stringify!($query)).unwrap() => $($tail)*) // TODO: better error
     }
 }
 
