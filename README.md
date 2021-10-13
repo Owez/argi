@@ -2,15 +2,28 @@
 
 Argument parsing for the future 🚀
 
-## Status
+## Features
 
-This package is now in beta (`0.1.0-beta.2`), allowing developers to get a preliminary look at the features this library has to offer. The main missing section of argi is documentation and minor polish, but no promises on api compatibility!
+- Macro-based approach, providing an intuitive way to layout a cli
+- Rich auto-help generation, styling based off of python's [`click`](https://click.palletsprojects.com/en/8.0.x/) library
+- Zero dependencies
+- Speedy compile times
+- Low binary bloat
+
+This library is intended to be a replacement for both heavier `structopt`/`clap`-based interfaces due to amount of features contained within, as well as slim ones based upon `pico-args` due to the small workflow and compilation footprint.
+
+As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
+
+## Usage
+
+Place the following into your `Cargo.toml` file:
+
+```toml
+[dependencies]
+argi = "0.1.0-beta.3"
+```
 
 ## Examples 
-
-You can find more of the examples shown below within the useful [`examples`](examples/) directory.
-
-### Basic
 
 This example simply prints the time-tested hello world message:
 
@@ -26,18 +39,7 @@ fn main() {
 }
 ```
 
-The top-level help message for this example looks like:
-
-```none
-Usage: basic [OPTIONS]
-
-  Demo command-line utility
-
-Options:
-  No commands or arguments found
-```
-
-### Pretend website
+(Generating [this](https://github.com/Owez/argi/blob/master/examples/basic_help.txt) help page)
 
 This example is a more complex command-line interface which pretends to launch a website via the use of arguments:
 
@@ -63,26 +65,9 @@ fn main() {
 }
 ```
 
-The top-level help message for this example looks like:
+(Generating [this](https://github.com/Owez/argi/blob/master/examples/pretend_website_help.txt) help page)
 
-```none
-Usage: pretend_website [OPTIONS]
-
-  Demo application which launches something
-
-Arguments:
-  -a --address [text]    Address to bind to
-  -p --port [port]       Port number from 0 to 65535
-```
-
-## Usage
-
-Place the following into your `Cargo.toml` file:
-
-```toml
-[dependencies]
-argi = "0.1.0-beta.1"
-```
+You can find more of the examples shown below within the useful [`examples`](examples/) directory.
 
 ## Licensing
 
