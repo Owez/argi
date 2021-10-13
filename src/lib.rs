@@ -40,20 +40,23 @@
 //! ```no_run
 //! use argi::{cli, data};
 //!
-//! cli! {
-//!     help: "Demo application which launches something",
-//!     run: (|ctx, _| {
-//!         println!("Address found: {}", data!(ctx => --address));
-//!         println!("Port found: {}", data!(u16, ctx => --port));
-//!     }),
-//!     --address -a [text]: {
-//!         help: "Address to bind to"
-//!     },
-//!     --port -p [port]: {
-//!         help: "Port number from 0 to 65535"
+//! fn main() {
+//!     cli! {
+//!         help: "Demo application which launches something",
+//!         run: (|ctx, _| {
+//!             let addr = data!(ctx => --address).unwrap();
+//!             let port = data!(u16, ctx => --port).unwrap();
+//!             println!("Address found: {}\nPort found: {}", addr, port);
+//!         }),
+//!         --address -a [text]: {
+//!             help: "Address to bind to",
+//!         },
+//!         --port -p [port]: {
+//!             help: "Port number from 0 to 65535",
+//!         }
 //!     }
+//!     .launch();
 //! }
-//! .launch();
 //! ```
 //!
 //! The top-level help message for this example looks like:
@@ -86,6 +89,7 @@
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+#![allow(clippy::needless_doctest_main)]
 
 mod error;
 
@@ -203,7 +207,7 @@ impl<'a> Command<'a> {
             } // in whitelist, return with help
             Some(val) => val, // good value
             None => {
-                return if self.parses.is_some() && self.data.is_none() {
+                return if self.parses.is_some() && !self.parses_opt && self.data.is_none() {
                     Err(Error::DataRequired(call.clone()))
                 } else {
                     if let Some(run) = self.run {
@@ -217,18 +221,17 @@ impl<'a> Command<'a> {
 
         if left.starts_with('-') {
             // argument
-            self.arg_flow(stream, call, left)?
+            self.arg_flow(stream, call, left.clone())?
         } else if let Some(cmd) = self.search_subcmds_mut(&left) {
             // subcommand
             cmd.parse(stream, call)?
-        } else if self.parses.is_some() {
-            // data for self
-            self.apply_afters(Some(left))
-        } else {
+        } else if self.parses.is_none() {
             // unwanted data
             return Err(Error::CommandNotFound((left, call.clone())));
         }
 
+        // data for self
+        self.apply_afters(Some(left));
         Ok(())
     }
 
@@ -239,52 +242,84 @@ impl<'a> Command<'a> {
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
-        let instigator_fmt = if let Some(instigator) = left.strip_prefix("--") {
-            vec![instigator.to_string()]
+        // get formatted instigator
+        let instigator: &str = if let Some(instigator) = left.strip_prefix("--") {
+            Ok(instigator)
+        } else if let Some(instigator) = left.strip_prefix('-') {
+            Ok(instigator)
         } else {
-            left[1..]
-                .chars()
-                .into_iter()
-                .map(|c| c.to_string())
-                .collect()
-        };
-
-        for instigator in instigator_fmt {
-            let instigator_str = instigator.as_str();
-
-            // validation and help
-            let mut found = false;
-            for arg in self.args.iter() {
-                if arg.instigators.contains(&instigator_str) {
-                    found = true;
-                    match stream.peek() {
-                        Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
-                            stream.next();
-                            self.help(&mut io::stdout())?;
-                            process::exit(0)
-                        }
-                        _ => continue,
-                    }
+            // errors
+            if call.len() >= 3 {
+                // maybe data required for arg
+                let lasts = &call.iter().rev().take(3).collect::<Vec<&String>>()[1..];
+                if lasts[0].starts_with('-') && lasts[1].starts_with('-') {
+                    return Err(Error::DataRequiredArg(lasts[1].clone()));
                 }
             }
-            if !found {
-                return Err(Error::ArgumentNotFound((instigator, call.clone())));
-            }
 
-            // mutable data application, due to rust
-            for arg in self.args.iter_mut() {
-                if arg.instigators.contains(&instigator_str) {
-                    match stream.next() {
-                        None if arg.parses.is_some() => {
-                            return Err(Error::DataRequired(call.clone()))
-                        }
-                        got => arg.apply_afters(got),
-                    }
+            // arg not found
+            Err(Error::ArgumentNotFound((left, call.clone())))
+        }?;
+
+        // validation and help
+        let mut found = false;
+        let mut instant = None;
+        for arg in self.args.iter() {
+            if arg.instigators.contains(&instigator) {
+                found = true;
+                match stream.peek() {
+                    Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
+                        stream.next();
+                        self.help(&mut io::stdout())?;
+                        process::exit(0)
+                    } // argument was a help call
+                    Some(next) if arg.parses_opt && self.arg_exists(next) => {
+                        let next_owned = stream.next().unwrap();
+                        call.push(next_owned.clone());
+                        instant = Some(next_owned);
+                    } // optional argument with data provided, but the data is another valid argument
+                    _ => break, // found
                 }
             }
         }
+        if !found {
+            // not found err
+            return Err(Error::ArgumentNotFound((
+                instigator.to_string(),
+                call.clone(),
+            )));
+        } else if let Some(instant) = instant {
+            // parse next argument if current is optional and next is present
+            return self.arg_flow(stream, call, instant);
+        }
 
-        Ok(())
+        // mutable data application, due to rust
+        for arg in self.args.iter_mut() {
+            if arg.instigators.contains(&instigator) {
+                if arg.parses.is_some() {
+                    match stream.next() {
+                        None if !arg.parses_opt => return Err(Error::DataRequired(call.clone())),
+                        Some(data) => {
+                            call.push(data.clone());
+                            arg.apply_afters(Some(data))
+                        }
+                        got => arg.apply_afters(got),
+                    }
+                } else {
+                    arg.apply_afters(None)
+                }
+                break;
+            }
+        }
+
+        // finish up
+        match stream.next() {
+            Some(left) => {
+                call.push(left.clone());
+                self.arg_flow(stream, call, left)
+            } // next arg
+            None => Ok(()), // end
+        }
     }
 
     /// Searches current instance's subcommands for given name
@@ -295,6 +330,24 @@ impl<'a> Command<'a> {
             }
         }
         None
+    }
+
+    /// Checks if an argument exists by its raw instigator value (includes `-` or `--` section)
+    fn arg_exists(&self, raw_instigator: &str) -> bool {
+        let instigator = if let Some(v) = raw_instigator.strip_prefix("--") {
+            v
+        } else if let Some(v) = raw_instigator.strip_prefix('-') {
+            v
+        } else {
+            raw_instigator
+        };
+
+        for arg in self.args.iter() {
+            if arg.instigators.contains(&instigator) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Writes full help message to buffer
@@ -531,31 +584,22 @@ macro_rules! get {
     }
 }
 
+// TODO: optional is gobbling others, need to maybe peek and check
+// TODO: rewrite data
+
 #[macro_export]
 macro_rules! data {
-    // custom parses
-    ($to:ty, $ctx:expr => $($tail:tt)*) => {
-        {
-            let parsed = $crate::data!($ctx => $($tail)*).parse::<$to>();
-            match parsed {
-                Ok(v) => v,
-                Err(_) => {
-                    $ctx.help_err($crate::Error::InvalidData(stringify!($to)));
-                    std::process::exit(1)
-                }
-            }
-        }
-    };
-    // just to string
+    // plain (string) data fetch
     ($ctx:expr => $($tail:tt)*) => {
         {
-            let opt_data = $crate::get!($ctx => $($tail)*).data.clone();
-            match opt_data {
-                Some(data) => data,
-                None => {
+            let got = $crate::get!($ctx => $($tail)*);
+            match got.data.clone() {
+                Some(data) => Some(data),
+                None if got.parses_opt || got.parses.is_none() => None,
+                _ => {
                     use $crate::ArgiIsArg;
-                    let err = match $ctx.is_arg() {
-                        true => $crate::Error::DataRequiredArg,
+                    let err = match got.is_arg() {
+                        true => $crate::Error::DataRequiredArg(got.instigators[0].to_string()),
                         false => $crate::Error::DataRequiredCommand
                     };
                     $ctx.help_err(err);
@@ -563,6 +607,18 @@ macro_rules! data {
                 }
             }
         }
+    };
+    // parse to type
+    ($to:ty, $ctx:expr => $($tail:tt)*) => {
+        $crate::data!($ctx => $($tail)*).map(|data| {
+            match data.parse::<$to>() {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    $ctx.help_err($crate::Error::InvalidData(stringify!($to)));
+                    std::process::exit(1)
+                }
+            }
+        })
     };
 }
 

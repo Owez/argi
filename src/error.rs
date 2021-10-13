@@ -12,7 +12,7 @@ pub enum Error {
     /// Data was required after known command/argument in stack but was not found
     DataRequired(Vec<String>),
     /// Data was required for argument but was not found, used in macro magic
-    DataRequiredArg,
+    DataRequiredArg(String), // FIXME: could add call here too
     /// Data was required for command but was not found, used in macro magic
     DataRequiredCommand,
     /// Input/output error
@@ -45,7 +45,16 @@ impl fmt::Display for Error {
                     fmt_call(call)
                 )
             }
-            Error::DataRequiredArg => write!(f, "Data was required for argument but was not found"),
+            Error::DataRequiredArg(arg) => {
+                let fmt_arg = if arg.starts_with('-') {
+                    arg.clone()
+                } else if arg.len() == 1 {
+                    format!("-{}", arg)
+                } else {
+                    format!("--{}", arg)
+                };
+                write!(f, "Data was required for {} but was not found", fmt_arg)
+            }
             Error::DataRequiredCommand => {
                 write!(f, "Data was required for command but was not found")
             }

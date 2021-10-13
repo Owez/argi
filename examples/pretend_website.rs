@@ -4,14 +4,15 @@ fn main() {
     cli! {
         help: "Demo application which launches something",
         run: (|ctx, _| {
-            println!("Address found: {}", data!(ctx => --address));
-            println!("Port found: {}", data!(u16, ctx => --port));
+            let addr = data!(ctx => --address).unwrap();
+            let port = data!(u16, ctx => --port).unwrap();
+            println!("Address found: {}\nPort found: {}", addr, port);
         }),
         --address -a [text]: {
-            help: "Address to bind to"
+            help: "Address to bind to",
         },
         --port -p [port]: {
-            help: "Port number from 0 to 65535"
+            help: "Port number from 0 to 65535",
         }
     }
     .launch();
