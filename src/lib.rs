@@ -8,9 +8,7 @@
 //! - Speedy compile times
 //! - Low binary bloat
 //!
-//! This library is intended to be a replacement for both heavier `structopt`/`clap`-based interfaces due to amount of features contained within, as well as slim ones based upon `pico-args` due to the small workflow and compilation footprint.
-//!
-//! As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
+//! This library is intended to be a replacement for both heavier [`structopt`](https://crates.io/crates/structopt)/[`clap`](https://crates.io/crates/clap)-based interfaces due to amount of features contained within, as well as slim ones based upon [`pico-args`](https://crates.io/crates/pico-args) due to the small workflow and compilation footprint. As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
 //!
 //! ## Usage
 //!
@@ -18,7 +16,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! argi = "0.1.0-beta.3"
+//! argi = "0.1.0-beta.4"
 //! ```
 //!
 //! ## Examples
@@ -29,10 +27,10 @@
 //! use argi::cli;
 //!
 //! fn main() {
-//!     cli! {
+//!     cli!(
 //!         help: "Demo command-line utility",
 //!         run: (|_, _| println!("Hello, world!"))
-//!     }
+//!     )
 //!     .launch();
 //! }
 //! ```
@@ -45,7 +43,7 @@
 //! use argi::{cli, data};
 //!
 //! fn main() {
-//!     cli! {
+//!     cli!(
 //!         help: "Demo application which launches something",
 //!         run: (|ctx, _| {
 //!             let addr = data!(ctx => --address).unwrap();
@@ -58,7 +56,7 @@
 //!         --port -p [port]: {
 //!             help: "Port number from 0 to 65535",
 //!         }
-//!     }
+//!     )
 //!     .launch();
 //! }
 //! ```

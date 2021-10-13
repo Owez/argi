@@ -18,7 +18,7 @@ Place the following into your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-argi = "0.1.0-beta.3"
+argi = "0.1.0-beta.4"
 ```
 
 ## Examples 
@@ -29,10 +29,10 @@ This example simply prints the time-tested hello world message:
 use argi::cli;
 
 fn main() {
-    cli! {
+    cli!(
         help: "Demo command-line utility",
         run: (|_, _| println!("Hello, world!"))
-    }
+    )
     .launch();
 }
 ```
@@ -45,7 +45,7 @@ This example is a more complex command-line interface which pretends to launch a
 use argi::{cli, data};
 
 fn main() {
-    cli! {
+    cli!(
         help: "Demo application which launches something",
         run: (|ctx, _| {
             let addr = data!(ctx => --address).unwrap();
@@ -58,7 +58,7 @@ fn main() {
         --port -p [port]: {
             help: "Port number from 0 to 65535",
         }
-    }
+    )
     .launch();
 }
 ```

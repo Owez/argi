@@ -1,6 +1,6 @@
 [package]
 name = "argi"
-version = "0.1.0-beta.3"
+version = "0.1.0-beta.4"
 description = "Argument parsing for the future 🚀"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
