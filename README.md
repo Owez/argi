@@ -10,9 +10,7 @@ Argument parsing for the future 🚀
 - Speedy compile times
 - Low binary bloat
 
-This library is intended to be a replacement for both heavier `structopt`/`clap`-based interfaces due to amount of features contained within, as well as slim ones based upon `pico-args` due to the small workflow and compilation footprint.
-
-As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
+This library is intended to be a replacement for both heavier [`structopt`](https://crates.io/crates/structopt)/[`clap`](https://crates.io/crates/clap)-based interfaces due to amount of features contained within, as well as slim ones based upon [`pico-args`](https://crates.io/crates/pico-args) due to the small workflow and compilation footprint — as this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
 
 ## Usage
 
