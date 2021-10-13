@@ -21,51 +21,33 @@ Place the following into your `Cargo.toml` file:
 argi = "0.1.0-beta.4"
 ```
 
-## Examples 
+## Example
 
-This example simply prints the time-tested hello world message:
-
-```rust
-use argi::cli;
-
-fn main() {
-    cli!(
-        help: "Demo command-line utility",
-        run: (|_, _| println!("Hello, world!"))
-    )
-    .launch();
-}
-```
-
-(Generating [this](https://github.com/Owez/argi/blob/master/examples/basic_help.txt) help page)
-
-This example is a more complex command-line interface which pretends to launch a website via the use of arguments:
+Complete demo ([help page](https://github.com/Owez/argi/blob/master/examples/irl_help.txt)):
 
 ```rust
 use argi::{cli, data};
 
 fn main() {
     cli!(
-        help: "Demo application which launches something",
-        run: (|ctx, _| {
-            let addr = data!(ctx => --address).unwrap();
-            let port = data!(u16, ctx => --port).unwrap();
-            println!("Address found: {}\nPort found: {}", addr, port);
-        }),
-        --address -a [text]: {
-            help: "Address to bind to",
+        help: "Imaginary webapp program, allowing simple tasks",
+        launch: {
+            help: "Launches instance to given address",
+            run: (|ctx, _| todo!("Launch at port {:?}", data!(ctx => --port))),
+            --db [url]: { help: "Database URL" },
+            --bind [url]: { help: "Binding address" },
+            --port [port]: { help: "Port to hook onto" },
         },
-        --port -p [port]: {
-            help: "Port number from 0 to 65535",
+        delete [int?]: {
+            help: "Deletes an optional id from the database",
+            run: (|_, data| todo!("Delete {:?}", data))
         }
     )
     .launch();
 }
 ```
 
-(Generating [this](https://github.com/Owez/argi/blob/master/examples/pretend_website_help.txt) help page)
-
-You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory.
+You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
 
 ## Licensing
 
