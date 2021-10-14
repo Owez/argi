@@ -55,9 +55,10 @@ fn main() {
             --bind [url]: { help: "Binding address" },
             --port [port]: { help: "Port to hook onto" },
         },
-        delete [int?]: {
-            help: "Deletes an optional id from the database",
-            run: (|_, data| println!("Deleting: {:?}", data))
+        delete [text?]: {
+            help: "Performs the delete operation upon data",
+            run: (|_, data| println!("Deleting {:?} item", data))
+            all: { help: "Deletes everything" }
         }
     )
     .launch();
