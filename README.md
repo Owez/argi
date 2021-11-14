@@ -4,67 +4,45 @@ Argument parsing for the future 🚀
 
 ## Features
 
-- Macro-based approach, providing an intuitive way to layout a cli
-- Rich auto-help generation, styling based off of python's [`click`](https://click.palletsprojects.com/en/8.0.x/) library
-- Zero dependencies
+- Intuative macro approach
 - Speedy compile times
-- Low binary bloat
+- Zero dependencies, tiny binary bloat
+- Rich auto-help generation with modern styling
 
-This library is intended to be a replacement for both heavier [`structopt`](https://crates.io/crates/structopt)/[`clap`](https://crates.io/crates/clap)-based interfaces due to amount of features contained within, as well as slim ones based upon [`pico-args`](https://crates.io/crates/pico-args) due to the small workflow and compilation footprint. As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
+## Quickstart
 
-## Usage
-
-Place the following into your `Cargo.toml` file:
+First, add this to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
 argi = "0.1.0-beta.5"
 ```
 
-## Example
-
-The code:
+And then you can create a simple cli:
 
 ```rust
-use argi::{cli, data};
-
-fn main() {
-    cli!(
-        help: "Imaginary webapp program, allowing simple tasks",
-        launch: {
-            help: "Launches instance to given address",
-            run: (|ctx, _| todo!("Launch at port {:?}", data!(ctx => --port))),
-            --db [url]: { help: "Database URL" },
-            --bind [url]: { help: "Binding address" },
-            --port [port]: { help: "Port to hook onto" },
-        },
-        delete [text?]: {
-            help: "Performs the delete operation upon data",
-            run: (|_, data| println!("Deleting {:?} item", data)),
-            all: { help: "Deletes everything" }
-        }
-    )
-    .launch();
-}
+// TODO
 ```
 
-The help output:
+When ran, this will output this help message:
 
 ```none
-Usage: pretend_website [OPTIONS]
-
-  Demo application which launches something
-
-Arguments:
-  -a --address [text]    Address to bind to
-  -p --port [port]       Port number from 0 to 65535
+TODO
 ```
 
-You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
+You can find this and many more demo projects inside of the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
+
+## Comparisons
+
+The below sections contain comparisons to similar, competing libraries. Please note that we try to be as unbiased as possible but there is sadly a natural COI here.
+
+- Versus `clap`
+
+    TODO
+- Versus `argh`
+
+    TODO
 
 ## Licensing
 
-This project is dual-licensed under both MIT and Apache, so feel free to use either at your discretion. Links to the files are listed below:
-
-- [MIT](LICENSE-MIT)
-- [Apache](LICENSE-APACHE)
+This project is dual-licensed under both the [MIT](https://github.com/Owez/argi/blob/master/LICENSE-MIT) and [Apache](https://github.com/Owez/argi/blob/master/LICENSE-APACHE), so feel free to use either at your discretion.
