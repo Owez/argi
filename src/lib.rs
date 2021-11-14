@@ -1,49 +1,4 @@
-//! Argument parsing for the future 🚀
-//! 
-//! # Features
-//! 
-//! - Intuative macro approach
-//! - Speedy compile times
-//! - Zero dependencies, tiny binary bloat
-//! - Rich auto-help generation with modern styling
-//! 
-//! # Quickstart
-//! 
-//! First, add this to your `Cargo.toml` file:
-//! 
-//! ```toml
-//! [dependencies]
-//! argi = "0.1.0-beta.5"
-//! ```
-//! 
-//! And then you can create a simple cli:
-//! 
-//! ```rust
-//! // TODO
-//! ```
-//! 
-//! When ran, this will output this help message:
-//! 
-//! ```none
-//! TODO
-//! ```
-//! 
-//! You can find this and many more demo projects inside of the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
-//! 
-//! # Comparisons
-//! 
-//! The below sections contain comparisons to similar, competing libraries. Please note that we try to be as unbiased as possible but there is sadly a natural COI here.
-//! 
-//! - Versus `clap`
-//! 
-//!     TODO
-//! - Versus `argh`
-//! 
-//!     TODO
-//! 
-//! # Licensing
-//! 
-//! This project is dual-licensed under both the [MIT](https://github.com/Owez/argi/blob/master/LICENSE-MIT) and [Apache](https://github.com/Owez/argi/blob/master/LICENSE-APACHE), so feel free to use either at your discretion.
+//! TODO: add README.md here
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
@@ -315,18 +270,15 @@ impl<'a> Command<'a> {
     pub fn help(&self, buf: &mut impl Write) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
+        let name = fmt_name(self.name);
         buf.write_fmt(format_args!(
             "Usage: {}{}{}",
             get_cur_exe()?,
-            fmt_name(self.name),
+            name,
             fmt_parses(&self.parses, self.parses_opt),
         ))?;
 
-        if self.parses.is_some() || !self.name.is_empty() {
-            buf.write_all(&[b' '])?;
-        }
-
-        buf.write_all(b"[OPTIONS]")?;
+        buf.write_all(b" [OPTIONS]")?;
 
         if self.help.0.is_some() {
             buf.write_fmt(format_args!("\n\n  {}", self.help))?;
@@ -408,7 +360,6 @@ impl<'a> Command<'a> {
 impl<'a> CommonInternal<'a> for Command<'a> {
     fn help_left(&self) -> String {
         let mut output = self.name.to_string();
-        output.push(' ');
         output.push_str(&fmt_parses(&self.parses, self.parses_opt));
         output
     }
@@ -460,7 +411,6 @@ impl<'a> CommonInternal<'a> for Argument<'a> {
         fmtd.extend(long.iter().map(|l| format!("--{}", l)));
 
         output.push_str(fmtd.join(" ").as_str());
-        output.push(' ');
         output.push_str(&fmt_parses(&self.parses, self.parses_opt));
         output
     }
@@ -553,9 +503,6 @@ macro_rules! get {
     }
 }
 
-// TODO: optional is gobbling others, need to maybe peek and check
-// TODO: rewrite data
-
 #[macro_export]
 macro_rules! data {
     // plain (string) data fetch
@@ -601,7 +548,7 @@ macro_rules! cli_below {
         }
     };
     // args
-    ($wu:expr; $(,)? $($(-)?- $left:ident)+ $([$($parses:tt)*])? : { $($inner:tt)* } $($tail:tt)* ) => {
+    ($wu:expr; $(,)? $($(-)?- $left:ident )+ $([$($parses:tt)*])? : { $($inner:tt)* } $($tail:tt)* ) => {
         {
             let instigators = &[ $( stringify!($left) ),+ ];
             #[allow(unused_mut)]
@@ -609,7 +556,7 @@ macro_rules! cli_below {
                 instigators,
                 help: $crate::Help::default(),
                 parses: None,
-                parses_opt: false, // TOOD: use
+                parses_opt: false,
                 used: false,
                 run: None,
                 data: None
@@ -630,7 +577,7 @@ macro_rules! cli_below {
                 args: vec![],
                 subcmds: vec![],
                 parses: None,
-                parses_opt: false, // TODO: use
+                parses_opt: false,
                 used: false,
                 run: None,
                 data: None
@@ -840,8 +787,8 @@ mod tests {
 
     #[test]
     fn fmt_parses_opt() {
-        assert_eq!(format!("[hello]"), fmt_parses(&Some("hello"), false));
-        assert_eq!(format!("[hello?]"), fmt_parses(&Some("hello"), true));
+        assert_eq!(format!(" [hello]"), fmt_parses(&Some("hello"), false));
+        assert_eq!(format!(" [hello?]"), fmt_parses(&Some("hello"), true));
         assert_eq!(String::new(), fmt_parses(&None, true));
     }
 

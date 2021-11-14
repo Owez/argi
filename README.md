@@ -18,13 +18,13 @@ First, add this to your `Cargo.toml` file:
 argi = "0.1.0-beta.5"
 ```
 
-And then you can create a simple cli:
+And then you can create a simple application:
 
 ```rust
 // TODO
 ```
 
-When ran, this will output this help message:
+When ran, you should see the following help message:
 
 ```none
 TODO
