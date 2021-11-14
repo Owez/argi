@@ -1,3 +1,12 @@
+//! ```none
+//! Usage: basic [OPTIONS]
+//!
+//!   Demo command-line utility
+//!
+//! Options:
+//!   No commands or arguments found
+//! ```
+
 use argi::cli;
 
 fn main() {

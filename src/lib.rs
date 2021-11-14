@@ -21,9 +21,9 @@
 //!
 //! # Example
 //!
-//! Complete demo ([help page](https://github.com/Owez/argi/blob/master/examples/irl_help.txt)):
+//! The code:
 //!
-//! ```no_run
+//! ```rust
 //! use argi::{cli, data};
 //!
 //! fn main() {
@@ -31,7 +31,7 @@
 //!         help: "Imaginary webapp program, allowing simple tasks",
 //!         launch: {
 //!             help: "Launches instance to given address",
-//!             run: (|ctx, _| todo!("Launch at port {:?}", data!(u16, ctx => --port))),
+//!             run: (|ctx, _| todo!("Launch at port {:?}", data!(ctx => --port))),
 //!             --db [url]: { help: "Database URL" },
 //!             --bind [url]: { help: "Binding address" },
 //!             --port [port]: { help: "Port to hook onto" },
@@ -44,6 +44,18 @@
 //!     )
 //!     .launch();
 //! }
+//! ```
+//!
+//! The help output:
+//!
+//! ```none
+//! Usage: pretend_website [OPTIONS]
+//!
+//!   Demo application which launches something
+//!
+//! Arguments:
+//!   -a --address [text]    Address to bind to
+//!   -p --port [port]       Port number from 0 to 65535
 //! ```
 //!
 //! You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
@@ -124,8 +136,11 @@ trait CommonInternal<'a> {
 }
 
 pub struct Command<'a> {
+    /// Name of command, used for discovery
     pub name: &'a str,
+    /// Possible arguments which come after this command
     pub args: Vec<Argument<'a>>,
+    /// Possible recursive commands attached to this command that may occur
     pub subcmds: Vec<Command<'a>>,
     // the following values have been flattened into this and argument and function the same, this is for end user ease of use as the cost of us
     /// Indicates if a user has invoked this command at any point

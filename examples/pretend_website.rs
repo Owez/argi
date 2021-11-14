@@ -1,3 +1,13 @@
+//! ```none
+//! Usage: pretend_website [OPTIONS]
+//!
+//!   Demo application which launches something
+//!
+//! Arguments:
+//!   -a --address [text]    Address to bind to
+//!   -p --port [port]       Port number from 0 to 65535
+//! ```
+
 use argi::{cli, data};
 
 fn main() {

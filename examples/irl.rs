@@ -1,3 +1,13 @@
+//! ```none
+//! Usage: irl [OPTIONS]
+//!
+//!   Imaginary webapp program, allowing simple tasks
+//!
+//! Commands:
+//!   launch           Launches instance to given address
+//!   delete [int?]    Deletes an optional id from the database
+//! ```
+
 use argi::{cli, data, Command};
 use std::env;
 

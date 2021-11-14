@@ -1,8 +1,6 @@
-# argi
+i = """Argument parsing for the future 🚀
 
-Argument parsing for the future 🚀
-
-## Features
+# Features
 
 - Macro-based approach, providing an intuitive way to layout a cli
 - Rich auto-help generation, styling based off of python's [`click`](https://click.palletsprojects.com/en/8.0.x/) library
@@ -12,7 +10,7 @@ Argument parsing for the future 🚀
 
 This library is intended to be a replacement for both heavier [`structopt`](https://crates.io/crates/structopt)/[`clap`](https://crates.io/crates/clap)-based interfaces due to amount of features contained within, as well as slim ones based upon [`pico-args`](https://crates.io/crates/pico-args) due to the small workflow and compilation footprint. As this crate isn't fully battle-tested yet, smaller programs are a prime contender for usage with this library.
 
-## Usage
+# Usage
 
 Place the following into your `Cargo.toml` file:
 
@@ -21,7 +19,7 @@ Place the following into your `Cargo.toml` file:
 argi = "0.1.0-beta.5"
 ```
 
-## Example
+# Example
 
 The code:
 
@@ -62,9 +60,12 @@ Arguments:
 
 You can find more of the examples shown below within the useful [`examples/`](https://github.com/Owez/argi/tree/master/examples) directory!
 
-## Licensing
+# Licensing
 
 This project is dual-licensed under both MIT and Apache, so feel free to use either at your discretion. Links to the files are listed below:
 
 - [MIT](LICENSE-MIT)
-- [Apache](LICENSE-APACHE)
+- [Apache](LICENSE-APACHE)"""
+
+for x in i.splitlines():
+    print(f"//! {x}")
