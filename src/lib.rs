@@ -727,19 +727,19 @@ mod tests {
         assert_eq!(cmd.args[0].data, Some(data));
     }
 
-    // TODO: implement, see issue #1 (https://github.com/Owez/argi/issues/1)
-    // #[test]
-    // fn args_short_multi() {
-    //     let data = "pathandtext".to_string();
-    //     let mut cmd = example_cmd();
-    //     let mut input_stream = vec![data.clone()].into_iter().peekable();
+    // TODO: finish off implementation, see issue #1 (https://github.com/Owez/argi/issues/1)
+    #[test]
+    fn args_short_multi() {
+        let data = "pathandtext".to_string();
+        let mut cmd = example_cmd();
+        let mut input_stream = vec![data.clone()].into_iter().peekable();
 
-    //     cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
-    //         .unwrap();
+        cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
+            .unwrap();
 
-    //     assert_eq!(cmd.args[0].data, Some(data.clone()));
-    //     assert_eq!(cmd.args[1].data, Some(data.clone()));
-    // }
+        assert_eq!(cmd.args[0].data, Some(data.clone()));
+        assert_eq!(cmd.args[1].data, Some(data.clone()));
+    }
 
     #[test]
     fn args_long() {
