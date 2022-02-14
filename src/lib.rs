@@ -162,11 +162,24 @@ impl<'a> Command<'a> {
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
+        /// The kind of instigator detected for further integration, most importantly for multi-char short arguments
+        #[derive(PartialEq)]
+        enum InstigatorKind {
+            Short,
+            MultiShort,
+            Long,
+        }
+
         // get formatted instigator
-        let instigator: &str = if let Some(instigator) = left.strip_prefix("--") {
-            Ok(instigator)
+        let (instigator,instigator_kind) = if let Some(instigator) = left.strip_prefix("--") {
+            Ok((instigator, InstigatorKind::Long))
         } else if let Some(instigator) = left.strip_prefix('-') {
-            Ok(instigator)
+            let instigator_kind = if instigator.len() > 1 {
+                InstigatorKind::MultiShort
+            } else {
+                InstigatorKind::Short
+            };
+            Ok((instigator, instigator_kind))
         } else {
             // errors
             if call.len() >= 3 {
@@ -185,6 +198,10 @@ impl<'a> Command<'a> {
         let mut found = false;
         let mut instant = None;
         for arg in self.args.iter() {
+            if instigator_kind == InstigatorKind::MultiShort {
+                todo!("parse multiple short args")
+            }
+
             if arg.instigators.contains(&instigator) {
                 found = true;
                 match stream.peek() {
