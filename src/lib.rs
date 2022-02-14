@@ -92,10 +92,14 @@ pub struct Command<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn launch(mut self) -> Self {
+    pub fn launch(self) -> Self {
         let mut stream = env::args().peekable();
         stream.next();
+        self.launch_custom(stream)
+    }
 
+    /// Same as [Command::launch] but allows custom inputting of a `stream` containing input arguments
+    pub fn launch_custom(mut self, mut stream: Peekable<impl Iterator<Item = String>>) -> Self {
         if !self.parses_opt && self.run.is_none() && stream.peek().is_none() {
             self.help_err(Error::NothingInputted);
             process::exit(1)
@@ -792,7 +796,34 @@ mod tests {
         assert_eq!(String::new(), fmt_parses(&None, true));
     }
 
-    // TODO: test data
+    #[test]
+    fn check_data() {
+        let mut cli = cli!(
+            --basic [num]: {}
+            complex [other]: {
+                help: "Making sure it works properly",
+                example [num?]: {
+                    --here -h [text]: {
+                        help: "This is a more complex example to check stuff"
+                    }
+                },
+                run: (|_,_| println!("woo!"))
+            }
+        );
+
+        cli.args[0].data = Some("255".to_string());
+        cli.args[0].used = true;
+
+        cli.subcmds[0].subcmds[0].args[0].data = Some("Hello there!".to_string());
+        cli.subcmds[0].subcmds[0].args[0].used = true;
+
+        assert_eq!(data!(u8, cli => --basic), Some(255));
+        assert_eq!(
+            data!(cli => complex example -h),
+            Some("Hello there!".to_string())
+        );
+    }
+
     // TODO: test get
     // TODO: test help with opt parses
 }

@@ -6,4 +6,4 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 authors = ["Owen Griffiths <root@ogriffiths.com>"]
 keywords = ["cli", "args", "parser", "argument", "parse"]
-edition = "2018"
+edition = "2021"
