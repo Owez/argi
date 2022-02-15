@@ -155,29 +155,6 @@ impl<'a> Command<'a> {
         Ok(())
     }
 
-    // /// Searches arguments for multiple short instigators, returning all of them or none if not all where found
-    // fn search_args_mshort(&self, instigators: &str) -> Option<Vec<&Argument>> {
-    //     let mut found = vec![];
-    //     let mut left: Vec<&str> = instigators
-    //         .chars()
-    //         .map(|c| c.to_string().as_str())
-    //         .collect();
-
-    //     for arg in self.args.iter() {
-    //         for (ind, check) in left.iter().enumerate() {
-    //             if arg.instigators.contains(&check) {
-    //                 found.push(arg);
-    //             }
-    //         }
-    //     }
-
-    //     if left.is_empty() {
-    //         Some(found)
-    //     } else {
-    //         None
-    //     }
-    // }
-
     /// Pathway for arguments which automatically adds data to arguments if found in current instance
     fn arg_flow(
         &mut self,
@@ -221,7 +198,6 @@ impl<'a> Command<'a> {
 
         // TODO: make compatible with arg_flow_sl and arg_flow_ms; could move to arg_flow_sl and make new one for arg_flow_ms
         // mutable data application, due to rust
-        
 
         // finish up
         match stream.next() {
@@ -312,12 +288,39 @@ impl<'a> Command<'a> {
     /// Specialty flow for verifying specialty multi-character short arguments; used as part of the larger [Self::arg_flow] method
     fn arg_flow_ms(
         &mut self,
-        _stream: &mut Peekable<impl Iterator<Item = String>>,
-        _call: &mut Vec<String>,
-        _left: String,
-        _instigator: &str,
+        stream: &mut Peekable<impl Iterator<Item = String>>,
+        call: &mut Vec<String>,
+        left: String,
+        instigator: &str,
     ) -> Result<()> {
-        todo!()
+        // get arguments
+        let args = {
+            let mut found = vec![];
+            let mut left: Vec<String> = instigator.chars().map(|c| c.to_string()).collect();
+
+            // iterate over arguments to search
+            for arg in self.args.iter() {
+                // iterate over instigators to match
+                for (ind, check) in left.iter().enumerate() {
+                    if arg.instigators.contains(&check.as_str()) {
+                        // add if one contains the other and break because we shouldn't match same arg twice
+                        todo!("remove element from `left`");
+                        found.push(arg);
+                        break;
+                    }
+                }
+            }
+
+            // return arguments if all exist, this will fail if not as `-abc` must get all 3 arguments
+            if left.is_empty() {
+                Some(found)
+            } else {
+                None
+            }
+        };
+        let args = args.ok_or(Error::ArgumentNotFound((left, call.clone())))?;
+
+        todo!("get multi short")
     }
 
     /// Searches current instance's subcommands for given name
