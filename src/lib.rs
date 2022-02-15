@@ -155,6 +155,30 @@ impl<'a> Command<'a> {
         Ok(())
     }
 
+
+    // /// Searches arguments for multiple short instigators, returning all of them or none if not all where found
+    // fn search_args_mshort(&self, instigators: &str) -> Option<Vec<&Argument>> {
+    //     let mut found = vec![];
+    //     let mut left: Vec<&str> = instigators
+    //         .chars()
+    //         .map(|c| c.to_string().as_str())
+    //         .collect();
+
+    //     for arg in self.args.iter() {
+    //         for (ind, check) in left.iter().enumerate() {
+    //             if arg.instigators.contains(&check) {
+    //                 found.push(arg);
+    //             }
+    //         }
+    //     }
+
+    //     if left.is_empty() {
+    //         Some(found)
+    //     } else {
+    //         None
+    //     }
+    // }
+
     /// Pathway for arguments which automatically adds data to arguments if found in current instance
     fn arg_flow(
         &mut self,
@@ -162,18 +186,12 @@ impl<'a> Command<'a> {
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
-        /// The kind of instigator detected for further integration, most importantly for multi-char short arguments
-        #[derive(PartialEq)]
-        enum InstigatorKind {
-            Short,
-            MultiShort,
-            Long,
-        }
-
         // get formatted instigator
-        let (instigator,instigator_kind) = if let Some(instigator) = left.strip_prefix("--") {
+        let (instigator, instigator_kind) = if let Some(instigator) = left.strip_prefix("--") {
+            // long arg
             Ok((instigator, InstigatorKind::Long))
         } else if let Some(instigator) = left.strip_prefix('-') {
+            // short args
             let instigator_kind = if instigator.len() > 1 {
                 InstigatorKind::MultiShort
             } else {
@@ -191,42 +209,59 @@ impl<'a> Command<'a> {
             }
 
             // arg not found
-            Err(Error::ArgumentNotFound((left, call.clone())))
+            Err(Error::ArgumentNotFound((left.clone(), call.clone())))
         }?;
 
-        // validation and help
-        let mut found = false;
         let mut instant = None;
-        for arg in self.args.iter() {
-            if instigator_kind == InstigatorKind::MultiShort {
-                todo!("parse multiple short args")
-            }
+        match instigator_kind {
+            // short/long args
+            InstigatorKind::Short | InstigatorKind::Long => {
+                // get short/long argument to ensure it exists & to check parsing optionality
+                let mut arg = None;
+                for possible in self.args.iter() {
+                    // loop over and find
+                    if possible.instigators.contains(&instigator) {
+                        arg = Some(possible);
+                        break;
+                    }
+                }
 
-            if arg.instigators.contains(&instigator) {
-                found = true;
+                // make sure argument is present
+                let arg = if let Some(arg) = arg {
+                    // set if it's present
+                    arg
+                } else {
+                    // return not found if it's not
+                    return Err(Error::ArgumentNotFound((left, call.clone())));
+                };
+
+                // check next values to see if they impact calling help or anything
                 match stream.peek() {
+                    // argument was a help call, display for parent subcmd and exit
                     Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
                         stream.next();
                         self.help(&mut io::stdout())?;
                         process::exit(0)
-                    } // argument was a help call
+                    }
+                    // optional argument with data provided, but the data is another valid argument
                     Some(next) if arg.parses_opt && self.arg_exists(next) => {
                         let next_owned = stream.next().unwrap();
                         call.push(next_owned.clone());
                         instant = Some(next_owned);
-                    } // optional argument with data provided, but the data is another valid argument
-                    _ => break, // found
+                    }
+                    // anything else means there was no direct arg next and so validation is complete
+                    _ => (),
                 }
             }
+            // multi short args
+            InstigatorKind::MultiShort => {
+                todo!()
+            }
         }
-        if !found {
-            // not found err
-            return Err(Error::ArgumentNotFound((
-                instigator.to_string(),
-                call.clone(),
-            )));
-        } else if let Some(instant) = instant {
-            // parse next argument if current is optional and next is present
+
+        // TODO: ensure that this won't mess with `[arg].used`
+        // parse next argument if current is optional and next is present
+        if let Some(instant) = instant {
             return self.arg_flow(stream, call, instant);
         }
 
@@ -376,6 +411,14 @@ impl<'a> Command<'a> {
         // print error
         eprintln!("{}{}!", ERROR, err);
     }
+}
+
+/// The kind of instigator detected for further integration, most importantly for multi-char short arguments
+#[derive(PartialEq)]
+enum InstigatorKind {
+    Short,
+    MultiShort,
+    Long,
 }
 
 impl<'a> CommonInternal<'a> for Command<'a> {
