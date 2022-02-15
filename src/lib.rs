@@ -221,23 +221,7 @@ impl<'a> Command<'a> {
 
         // TODO: make compatible with arg_flow_sl and arg_flow_ms; could move to arg_flow_sl and make new one for arg_flow_ms
         // mutable data application, due to rust
-        for arg in self.args.iter_mut() {
-            if arg.instigators.contains(&instigator) {
-                if arg.parses.is_some() {
-                    match stream.next() {
-                        None if !arg.parses_opt => return Err(Error::DataRequired(call.clone())),
-                        Some(data) => {
-                            call.push(data.clone());
-                            arg.apply_afters(Some(data))
-                        }
-                        got => arg.apply_afters(got),
-                    }
-                } else {
-                    arg.apply_afters(None)
-                }
-                break;
-            }
-        }
+        
 
         // finish up
         match stream.next() {
@@ -280,7 +264,7 @@ impl<'a> Command<'a> {
                 process::exit(0)
             }
             // optional argument with data provided, but the data is another valid argument
-            Some(next) if arg.parses_opt && self.arg_exists(next) => {  
+            Some(next) if arg.parses_opt && self.arg_exists(next) => {
                 let next_owned = stream.next().unwrap();
                 call.push(next_owned.clone());
                 instant = Some(next_owned);
@@ -289,7 +273,40 @@ impl<'a> Command<'a> {
             _ => (),
         }
 
-        todo!("mut iter")
+        // TODO: ensure that this won't mess with `[arg].used`
+        // parse next argument if current is optional and next is present
+        if let Some(instant) = instant {
+            return self.arg_flow(stream, call, instant);
+        }
+
+        // apply data and used sections to argument
+        // this is a separate loop due to borrowing rules not liking & and &mut together
+        for arg in self.args.iter_mut() {
+            // find argument which was previously `arg` let
+            if arg.instigators.contains(&instigator) {
+                // apple next stages to argument
+                if arg.parses.is_some() {
+                    // if it parses something, try to parse data
+                    match stream.next() {
+                        // parsing data is required for argument but no data was found
+                        None if !arg.parses_opt => return Err(Error::DataRequired(call.clone())),
+                        // parse data and set to used
+                        Some(data) => {
+                            call.push(data.clone());
+                            arg.apply_afters(Some(data))
+                        }
+                        // no data found, pretend as if it wasn't there
+                        got => arg.apply_afters(got),
+                    }
+                } else {
+                    // apply after launch tasks as no data is here
+                    arg.apply_afters(None)
+                }
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Specialty flow for verifying specialty multi-character short arguments; used as part of the larger [Self::arg_flow] method
@@ -302,6 +319,7 @@ impl<'a> Command<'a> {
     ) -> Result<()> {
         todo!()
     }
+
     /// Searches current instance's subcommands for given name
     fn search_subcmds_mut(&mut self, name: &str) -> Option<&mut Command<'a>> {
         for subcmd in self.subcmds.iter_mut() {
