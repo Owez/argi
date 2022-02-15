@@ -267,14 +267,8 @@ impl<'a> Command<'a> {
             }
         }
 
-        // make sure argument is present
-        let arg = if let Some(arg) = arg {
-            // set if it's present
-            arg
-        } else {
-            // return not found if it's not
-            return Err(Error::ArgumentNotFound((left, call.clone())));
-        };
+        // make sure argument is present, error if not
+        let arg = arg.ok_or(Error::ArgumentNotFound((left, call.clone())))?;
 
         // check next values to see if they impact calling help or anything
         let mut instant = None;
@@ -286,7 +280,7 @@ impl<'a> Command<'a> {
                 process::exit(0)
             }
             // optional argument with data provided, but the data is another valid argument
-            Some(next) if arg.parses_opt && self.arg_exists(next) => {
+            Some(next) if arg.parses_opt && self.arg_exists(next) => {  
                 let next_owned = stream.next().unwrap();
                 call.push(next_owned.clone());
                 instant = Some(next_owned);
