@@ -155,7 +155,6 @@ impl<'a> Command<'a> {
         Ok(())
     }
 
-
     // /// Searches arguments for multiple short instigators, returning all of them or none if not all where found
     // fn search_args_mshort(&self, instigators: &str) -> Option<Vec<&Argument>> {
     //     let mut found = vec![];
@@ -186,7 +185,7 @@ impl<'a> Command<'a> {
         call: &mut Vec<String>,
         left: String,
     ) -> Result<()> {
-        // get formatted instigator
+        // get formatted instigator and it's defined kind
         let (instigator, instigator_kind) = if let Some(instigator) = left.strip_prefix("--") {
             // long arg
             Ok((instigator, InstigatorKind::Long))
@@ -212,59 +211,15 @@ impl<'a> Command<'a> {
             Err(Error::ArgumentNotFound((left.clone(), call.clone())))
         }?;
 
-        let mut instant = None;
+        // verify now we have instigator types well-defined
         match instigator_kind {
-            // short/long args
             InstigatorKind::Short | InstigatorKind::Long => {
-                // get short/long argument to ensure it exists & to check parsing optionality
-                let mut arg = None;
-                for possible in self.args.iter() {
-                    // loop over and find
-                    if possible.instigators.contains(&instigator) {
-                        arg = Some(possible);
-                        break;
-                    }
-                }
-
-                // make sure argument is present
-                let arg = if let Some(arg) = arg {
-                    // set if it's present
-                    arg
-                } else {
-                    // return not found if it's not
-                    return Err(Error::ArgumentNotFound((left, call.clone())));
-                };
-
-                // check next values to see if they impact calling help or anything
-                match stream.peek() {
-                    // argument was a help call, display for parent subcmd and exit
-                    Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
-                        stream.next();
-                        self.help(&mut io::stdout())?;
-                        process::exit(0)
-                    }
-                    // optional argument with data provided, but the data is another valid argument
-                    Some(next) if arg.parses_opt && self.arg_exists(next) => {
-                        let next_owned = stream.next().unwrap();
-                        call.push(next_owned.clone());
-                        instant = Some(next_owned);
-                    }
-                    // anything else means there was no direct arg next and so validation is complete
-                    _ => (),
-                }
+                self.arg_flow_sl(stream, call, left.clone(), instigator)
             }
-            // multi short args
-            InstigatorKind::MultiShort => {
-                todo!()
-            }
-        }
+            InstigatorKind::MultiShort => self.arg_flow_ms(stream, call, left.clone(), instigator),
+        }?;
 
-        // TODO: ensure that this won't mess with `[arg].used`
-        // parse next argument if current is optional and next is present
-        if let Some(instant) = instant {
-            return self.arg_flow(stream, call, instant);
-        }
-
+        // TODO: make compatible with arg_flow_sl and arg_flow_ms; could move to arg_flow_sl and make new one for arg_flow_ms
         // mutable data application, due to rust
         for arg in self.args.iter_mut() {
             if arg.instigators.contains(&instigator) {
@@ -294,6 +249,65 @@ impl<'a> Command<'a> {
         }
     }
 
+    /// Specialty flow for verifying short and long arguments; used as part of the larger [Self::arg_flow] method
+    fn arg_flow_sl(
+        &mut self,
+        stream: &mut Peekable<impl Iterator<Item = String>>,
+        call: &mut Vec<String>,
+        left: String,
+        instigator: &str,
+    ) -> Result<()> {
+        // get short/long argument to ensure it exists & to check parsing optionality
+        let mut arg = None;
+        for possible in self.args.iter() {
+            // loop over and find
+            if possible.instigators.contains(&instigator) {
+                arg = Some(possible);
+                break;
+            }
+        }
+
+        // make sure argument is present
+        let arg = if let Some(arg) = arg {
+            // set if it's present
+            arg
+        } else {
+            // return not found if it's not
+            return Err(Error::ArgumentNotFound((left, call.clone())));
+        };
+
+        // check next values to see if they impact calling help or anything
+        let mut instant = None;
+        match stream.peek() {
+            // argument was a help call, display for parent subcmd and exit
+            Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
+                stream.next();
+                self.help(&mut io::stdout())?;
+                process::exit(0)
+            }
+            // optional argument with data provided, but the data is another valid argument
+            Some(next) if arg.parses_opt && self.arg_exists(next) => {
+                let next_owned = stream.next().unwrap();
+                call.push(next_owned.clone());
+                instant = Some(next_owned);
+            }
+            // anything else means there was no direct arg next and so validation is complete
+            _ => (),
+        }
+
+        todo!("mut iter")
+    }
+
+    /// Specialty flow for verifying specialty multi-character short arguments; used as part of the larger [Self::arg_flow] method
+    fn arg_flow_ms(
+        &mut self,
+        _stream: &mut Peekable<impl Iterator<Item = String>>,
+        _call: &mut Vec<String>,
+        _left: String,
+        _instigator: &str,
+    ) -> Result<()> {
+        todo!()
+    }
     /// Searches current instance's subcommands for given name
     fn search_subcmds_mut(&mut self, name: &str) -> Option<&mut Command<'a>> {
         for subcmd in self.subcmds.iter_mut() {
