@@ -295,25 +295,28 @@ impl<'a> Command<'a> {
     ) -> Result<()> {
         // get arguments
         let args = {
+            let data: Vec<String> = instigator.chars().map(|c| c.to_string()).collect();
+
+            let mut processed = vec![];
             let mut found = vec![];
-            let mut left: Vec<String> = instigator.chars().map(|c| c.to_string()).collect();
 
             // iterate over arguments to search
             for arg in self.args.iter() {
                 // iterate over instigators to match
-                for (ind, check) in left.iter().enumerate() {
+                for check in data.iter() {
                     if arg.instigators.contains(&check.as_str()) {
                         // add if one contains the other and break because we shouldn't match same arg twice
-                        todo!("remove element from `left`");
-                        found.push(arg);
+                        found.push(check);
+                        processed.push(arg);
                         break;
                     }
                 }
             }
 
             // return arguments if all exist, this will fail if not as `-abc` must get all 3 arguments
-            if left.is_empty() {
-                Some(found)
+            let stragglers = data.iter().filter(|check| !found.contains(check)).count();
+            if stragglers == 0 {
+                Some(processed)
             } else {
                 None
             }
