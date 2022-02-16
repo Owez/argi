@@ -101,14 +101,14 @@ impl<'a> Command<'a> {
     /// Same as [Command::launch] but allows custom inputting of a `stream` containing input arguments
     pub fn launch_custom(mut self, mut stream: Peekable<impl Iterator<Item = String>>) -> Self {
         if !self.parses_opt && self.run.is_none() && stream.peek().is_none() {
-            self.help_err(Error::NothingInputted);
+            self.help_err(Error::NothingInputted, None);
             process::exit(1)
         }
 
         match self.parse(&mut stream, &mut vec![]) {
             Ok(()) => self,
             Err(err) => {
-                self.help_err(err);
+                self.help_err(err, None);
                 process::exit(1)
             }
         }
@@ -122,7 +122,7 @@ impl<'a> Command<'a> {
     ) -> Result<()> {
         let left = match stream.next() {
             Some(val) if HELP_POSSIBLES.contains(&val.as_str()) => {
-                self.help(&mut io::stdout())?;
+                self.help(&mut io::stdout(), Some(&call))?;
                 process::exit(0)
             } // in whitelist, return with help
             Some(val) => val, // good value
@@ -236,7 +236,7 @@ impl<'a> Command<'a> {
             // argument was a help call, display for parent subcmd and exit
             Some(next) if HELP_POSSIBLES.contains(&next.as_str()) => {
                 stream.next();
-                self.help(&mut io::stdout())?;
+                self.help(&mut io::stdout(), Some(&call))?;
                 process::exit(0)
             }
             // optional argument with data provided, but the data is another valid argument
@@ -401,13 +401,23 @@ impl<'a> Command<'a> {
     }
 
     /// Writes full help message to buffer
-    pub fn help(&self, buf: &mut impl Write) -> Result<()> {
+    pub fn help(&self, buf: &mut impl Write, call: Option<&Vec<String>>) -> Result<()> {
         // TODO: multi-line arguments
         // TODO: truncate message if too long
-        let name = fmt_name(self.name);
+        let name = if let Some(call) = call {
+            fmt_call(call)
+        } else {
+            let mut output = get_cur_exe()?;
+            if self.name.len() != 0 {
+                output.push(' ');
+                output.push_str(self.name)
+            }
+            println!("{}",output);
+            output
+        };
+
         buf.write_fmt(format_args!(
-            "Usage: {}{}{}",
-            get_cur_exe()?,
+            "Usage: {}{}",
             name,
             fmt_parses(&self.parses, self.parses_opt),
         ))?;
@@ -477,11 +487,11 @@ impl<'a> Command<'a> {
 
     /// Prints a provided error to the `stderr` buffer, used in macros so is public but hidden
     #[doc(hidden)]
-    pub fn help_err(&self, err: Error) {
+    pub fn help_err(&self, err: Error, call: Option<&Vec<String>>) {
         const ERROR: &str = "\nError:\n  ";
         let stderr = io::stderr();
         let mut stderr_lock = stderr.lock();
-        match self.help(&mut stderr_lock) {
+        match self.help(&mut stderr_lock, call) {
             Ok(()) => (),
             Err(_) => eprintln!("{}Couldn't generate help for error below!", ERROR),
         }
@@ -584,12 +594,16 @@ impl ArgiIsArg for Command<'_> {
     }
 }
 
-fn fmt_name(input: &str) -> String {
-    if input.len() != 0 {
-        format!(" {}", input)
-    } else {
-        String::new()
+pub(crate) fn fmt_call(call: &[String]) -> String {
+    let mut output = match get_cur_exe() {
+        Ok(cur_exe) => cur_exe,
+        Err(_) => String::new(),
+    };
+    for item in call {
+        output.push(' ');
+        output.push_str(item);
     }
+    output
 }
 
 fn fmt_parses(parses: &Option<&str>, optional: bool) -> String {
@@ -655,7 +669,7 @@ macro_rules! data {
             match data.parse::<$to>() {
                 Ok(parsed) => parsed,
                 Err(err) => {
-                    $ctx.help_err($crate::Error::InvalidData(stringify!($to)));
+                    $ctx.help_err($crate::Error::InvalidData(stringify!($to)),None);
                     std::process::exit(1)
                 }
             }
@@ -844,7 +858,7 @@ mod tests {
     fn cmd_help_full() {
         let mut buf = vec![];
 
-        example_cmd().help(&mut buf).unwrap();
+        example_cmd().help(&mut buf, None).unwrap();
 
         let mut lines = str::from_utf8(buf.as_slice()).unwrap().lines();
         lines.next();
