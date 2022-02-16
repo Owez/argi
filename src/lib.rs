@@ -260,24 +260,11 @@ impl<'a> Command<'a> {
         for arg in self.args.iter_mut() {
             // find argument which was previously `arg` let
             if arg.instigators.contains(&instigator) {
-                // apple next stages to argument
-                if arg.parses.is_some() {
-                    // if it parses something, try to parse data
-                    match stream.next() {
-                        // parsing data is required for argument but no data was found
-                        None if !arg.parses_opt => return Err(Error::DataRequired(call.clone())),
-                        // parse data and set to used
-                        Some(data) => {
-                            call.push(data.clone());
-                            arg.apply_afters(Some(data))
-                        }
-                        // no data found, pretend as if it wasn't there
-                        got => arg.apply_afters(got),
-                    }
-                } else {
-                    // apply after launch tasks as no data is here
-                    arg.apply_afters(None)
-                }
+                // get next in stream if it might parse something, sadly this is repeated inside of apply_arg
+                let stream_next = if arg.parses.is_some() { stream.next() } else {None};
+
+                // apply everything for argument
+                Self::apply_arg(stream, call, arg, stream_next)?;
                 break;
             }
         }
@@ -294,17 +281,23 @@ impl<'a> Command<'a> {
         instigator: &str,
     ) -> Result<()> {
         // get arguments
-        let args = {
+        let (args, any_parses) = {
             let data: Vec<String> = instigator.chars().map(|c| c.to_string()).collect();
 
+            let mut any_parses=  false;
             let mut processed = vec![];
             let mut found = vec![];
 
             // iterate over arguments to search
-            for arg in self.args.iter() {
+            for arg in self.args.iter_mut() {
                 // iterate over instigators to match
                 for check in data.iter() {
                     if arg.instigators.contains(&check.as_str()) {
+                        // add to any_parses so we know if we should apply data to all
+                        if !any_parses && arg.parses.is_some() {
+                            any_parses = true
+                        }
+
                         // add if one contains the other and break because we shouldn't match same arg twice
                         found.push(check);
                         processed.push(arg);
@@ -315,15 +308,54 @@ impl<'a> Command<'a> {
 
             // return arguments if all exist, this will fail if not as `-abc` must get all 3 arguments
             let stragglers = data.iter().filter(|check| !found.contains(check)).count();
-            if stragglers == 0 {
-                Some(processed)
+            (if stragglers == 0 {
+                Some((processed))
             } else {
                 None
-            }
+            }, any_parses)
         };
         let args = args.ok_or(Error::ArgumentNotFound((left, call.clone())))?;
 
-        todo!("get multi short")
+        // get next in stream to apply for all args
+        let stream_next = stream.next();
+        
+        // TODO: use any_parses inside of apply_arg somehow, passing all data if these multi short args are valid, erroring if *any* are not
+
+        // iterate over validated arguments and apply everything they need
+        for arg in args {
+            Self::apply_arg(stream, call, arg, stream_next.clone())?
+        }
+
+        Ok(())
+    }
+
+    /// Once a mutable argument is found, everything can be applied to it depending upon if it has data
+    fn apply_arg(
+        stream: &mut Peekable<impl Iterator<Item = String>>,
+        call: &mut Vec<String>,
+        arg: &mut Argument,
+        stream_next: Option<String>
+    ) -> Result<()> {
+        // apple next stages to argument
+        if arg.parses.is_some() {
+            // if it parses something, try to parse data
+            match stream_next {
+                // parsing data is required for argument but no data was found
+                None if !arg.parses_opt => return Err(Error::DataRequired(call.clone())),
+                // parse data and set to used
+                Some(data) => {
+                    call.push(data.clone());
+                    arg.apply_afters(Some(data))
+                }
+                // no data found, pretend as if it wasn't there
+                got => arg.apply_afters(got),
+            }
+        } else  {
+            // apply after launch tasks as no data is here
+            arg.apply_afters(None)
+        }
+
+        Ok(())
     }
 
     /// Searches current instance's subcommands for given name
