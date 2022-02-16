@@ -323,17 +323,21 @@ impl<'a> Command<'a> {
         };
         let args = args.ok_or(Error::ArgumentNotFound((left.clone(), call.clone())))?;
 
+        // go over again to ensure each argument abides by parsing if required
+        if any_parses {
+            for arg in args.iter() {
+                // make sure the arg parses
+                if arg.parses.is_none() {
+                    return Err(Error::OtherArgNeedsData((left, call.clone())));
+                }
+            }
+        }
+
         // get next in stream if *any* arg in call wanted to be parsed
         let stream_next = if any_parses { stream.next() } else { None };
 
-        // iterate over validated arguments and apply everything they need
+        // iterate over validated arguments and apply everything they need via stream_next
         for arg in args {
-            // make sure the arg parses
-            if any_parses && arg.parses.is_none() {
-                return Err(Error::OtherArgNeedsData((left, call.clone())));
-            }
-
-            // apply argument with global next in stream for these multiple short arguments
             Self::apply_arg(call, arg, stream_next.clone())?
         }
 
