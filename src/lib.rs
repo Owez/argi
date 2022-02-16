@@ -261,10 +261,14 @@ impl<'a> Command<'a> {
             // find argument which was previously `arg` let
             if arg.instigators.contains(&instigator) {
                 // get next in stream if it might parse something, sadly this is repeated inside of apply_arg
-                let stream_next = if arg.parses.is_some() { stream.next() } else {None};
+                let stream_next = if arg.parses.is_some() {
+                    stream.next()
+                } else {
+                    None
+                };
 
                 // apply everything for argument
-                Self::apply_arg(stream, call, arg, stream_next)?;
+                Self::apply_arg(call, arg, stream_next)?;
                 break;
             }
         }
@@ -284,7 +288,7 @@ impl<'a> Command<'a> {
         let (args, any_parses) = {
             let data: Vec<String> = instigator.chars().map(|c| c.to_string()).collect();
 
-            let mut any_parses=  false;
+            let mut any_parses = false;
             let mut processed = vec![];
             let mut found = vec![];
 
@@ -308,22 +312,31 @@ impl<'a> Command<'a> {
 
             // return arguments if all exist, this will fail if not as `-abc` must get all 3 arguments
             let stragglers = data.iter().filter(|check| !found.contains(check)).count();
-            (if stragglers == 0 {
-                Some((processed))
-            } else {
-                None
-            }, any_parses)
+            (
+                if stragglers == 0 {
+                    Some(processed)
+                } else {
+                    None
+                },
+                any_parses,
+            )
         };
-        let args = args.ok_or(Error::ArgumentNotFound((left, call.clone())))?;
+        let args = args.ok_or(Error::ArgumentNotFound((left.clone(), call.clone())))?;
 
-        // get next in stream to apply for all args
-        let stream_next = stream.next();
-        
-        // TODO: use any_parses inside of apply_arg somehow, passing all data if these multi short args are valid, erroring if *any* are not
+        // get next in stream if *any* arg in call wanted to be parsed
+        let stream_next = if any_parses { stream.next() } else { None };
 
         // iterate over validated arguments and apply everything they need
         for arg in args {
-            Self::apply_arg(stream, call, arg, stream_next.clone())?
+            // make sure the arg parses
+            if any_parses && arg.parses.is_none() {
+                return Err(Error::OtherArgNeedsData((left, call.clone())));
+            }
+
+            // TODO: make sure this apply_arg fails if all but one requires data and just generally test
+            // TODO: more tests for the above with multi short args
+            // apply argument with global next in stream for these multiple short arguments
+            Self::apply_arg(call, arg, stream_next.clone())?
         }
 
         Ok(())
@@ -331,10 +344,9 @@ impl<'a> Command<'a> {
 
     /// Once a mutable argument is found, everything can be applied to it depending upon if it has data
     fn apply_arg(
-        stream: &mut Peekable<impl Iterator<Item = String>>,
         call: &mut Vec<String>,
         arg: &mut Argument,
-        stream_next: Option<String>
+        stream_next: Option<String>,
     ) -> Result<()> {
         // apple next stages to argument
         if arg.parses.is_some() {
@@ -350,7 +362,7 @@ impl<'a> Command<'a> {
                 // no data found, pretend as if it wasn't there
                 got => arg.apply_afters(got),
             }
-        } else  {
+        } else {
             // apply after launch tasks as no data is here
             arg.apply_afters(None)
         }
