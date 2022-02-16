@@ -333,8 +333,6 @@ impl<'a> Command<'a> {
                 return Err(Error::OtherArgNeedsData((left, call.clone())));
             }
 
-            // TODO: make sure this apply_arg fails if all but one requires data and just generally test
-            // TODO: more tests for the above with multi short args
             // apply argument with global next in stream for these multiple short arguments
             Self::apply_arg(call, arg, stream_next.clone())?
         }
@@ -863,7 +861,6 @@ mod tests {
         assert_eq!(cmd.args[0].data, Some(data));
     }
 
-    // TODO: finish off implementation, see issue #1 (https://github.com/Owez/argi/issues/1)
     #[test]
     fn args_short_multi() {
         let data = "pathandtext".to_string();
@@ -875,6 +872,18 @@ mod tests {
 
         assert_eq!(cmd.args[0].data, Some(data.clone()));
         assert_eq!(cmd.args[1].data, Some(data.clone()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn args_short_multi_data_err() {
+        let data = "pathandtext".to_string();
+        let mut cmd = example_cmd();
+        cmd.args[1].parses = None; // remove -z's parsing
+        let mut input_stream = vec![data.clone()].into_iter().peekable();
+
+        cmd.arg_flow(&mut input_stream, &mut vec![], "-az".to_string())
+            .unwrap()
     }
 
     #[test]
