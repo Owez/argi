@@ -5,6 +5,7 @@
 #![allow(clippy::needless_doctest_main)]
 
 mod error;
+mod typo;
 
 pub use error::{Error, Result};
 
